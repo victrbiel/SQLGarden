@@ -3,7 +3,7 @@ import SwiftUI
 import StudioCore
 
 struct QueryDocument: Identifiable {
-    let id = UUID()
+    var id = UUID()
     var title: String
     var sql: String
     var selection = NSRange(location: 0, length: 0)
@@ -40,20 +40,129 @@ final class Workspace: ObservableObject {
     @Published var database = "master"
     @Published var objects: [DatabaseObject] = []
     @Published var search = ""
-    @Published var documents = [QueryDocument(title: "Consulta 1", sql: "-- Escreva seu T-SQL e pressione ⌘↩ para executar.\nSELECT @@VERSION AS Versao;\nGO\nSELECT DB_NAME() AS BancoAtual;\n")]
-    @Published var activeID = UUID()
+    @Published var documents = [QueryDocument(title: "Consulta 1", sql: "-- Escreva seu T-SQL e pressione ⌘↩ para executar.\nSELECT @@VERSION AS Versao;\nGO\nSELECT DB_NAME() AS BancoAtual;\n")] { didSet { scheduleSave() } }
+    @Published var activeID = UUID() { didSet { scheduleSave() } }
     @Published var resultTab = "results"
+    @Published var history: [HistoryEntry] = []
+    @Published var historyEnabled = true
+    @Published var historySheet = false
+    @Published var feedbackSheet = false
+    @Published var storageNotice: String?
+    @Published var sessionID: String?
+    @Published var transactionCount: Int?
+    @Published var transactionState: Int?
+    @Published var sessionCheckedAt: Date?
+    @Published var diagnosticEvents: [DiagnosticEvent] = []
+    private var saveTask: DispatchWorkItem?
+    private var readyToSave = false
+    private var cancelRequested = false
+    private let storage: WorkspaceStorage
+    private let defaults: UserDefaults
     private let client = SQLClient()
     private let metadata = SQLClient()
     private var metadataAvailable = false
     private var objectRequest = UUID()
 
-    init() {
-        profile = (UserDefaults.standard.data(forKey: "connection").flatMap { try? JSONDecoder().decode(ConnectionProfile.self, from: $0) }) ?? ConnectionProfile()
-        // The generated starter query is reproducible, not unsaved user work.
+    init(storageDirectory: URL? = nil, defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        let root = storageDirectory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(Bundle.main.bundleIdentifier ?? "app.sqlgarden.mac", isDirectory: true)
+        storage = WorkspaceStorage(directory: root)
+        profile = defaults.data(forKey: "connection").flatMap { try? JSONDecoder().decode(ConnectionProfile.self, from: $0) } ?? ConnectionProfile()
         documents[0].savedText = documents[0].sql
         activeID = documents[0].id
         database = profile.database
+        record(.appStarted)
+        do {
+            let (snapshot, usedBackup) = try storage.load()
+            if let snapshot {
+                historyEnabled = snapshot.historyEnabled
+                history = historyEnabled ? HistoryEntry.bounded(snapshot.history) : []
+                if !snapshot.drafts.isEmpty {
+                    documents = snapshot.drafts.map { draft in
+                        var doc = QueryDocument(title: draft.title, sql: draft.sql)
+                        doc.id = draft.id; doc.selection = draft.selection; doc.savedText = draft.savedText
+                        doc.url = draft.filePath.map { URL(fileURLWithPath: $0) }
+                        return doc
+                    }
+                    activeID = documents.contains(where: { $0.id == snapshot.activeID }) ? snapshot.activeID! : documents[0].id
+                    record(.recoveryLoaded)
+                }
+                if usedBackup { storageNotice = "Recuperação pela cópia de segurança. Confira os últimos rascunhos." }
+            }
+        } catch {
+            storageNotice = "Não foi possível recuperar os rascunhos. Os arquivos anteriores foram preservados."
+            record(.recoveryFailed)
+            // Do not overwrite unreadable recovery files without an explicit user action.
+            return
+        }
+        readyToSave = true
+    }
+    private func snapshot() -> WorkspaceSnapshot {
+        var result = WorkspaceSnapshot()
+        result.drafts = documents.map { Draft(id: $0.id, title: $0.title, sql: $0.sql, filePath: $0.url?.path,
+                                              savedText: $0.savedText, selection: $0.selection) }
+        result.activeID = activeID; result.historyEnabled = historyEnabled
+        result.history = historyEnabled ? history : []
+        return result
+    }
+    private func scheduleSave() {
+        guard readyToSave else { return }
+        saveTask?.cancel()
+        let task = DispatchWorkItem { [weak self] in self?.saveWorkspace() }
+        saveTask = task
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: task)
+    }
+    @discardableResult func saveWorkspace() -> Bool {
+        saveTask?.cancel()
+        guard readyToSave else { return false }
+        do { try storage.save(snapshot()); return true }
+        catch {
+            storageNotice = "Falha ao salvar a recuperação local. Salve suas consultas em arquivos SQL."
+            record(.storageFailed); return false
+        }
+    }
+    func record(_ code: DiagnosticCode, message: String = "") {
+        diagnosticEvents.append(DiagnosticEvent(code, states: DiagnosticSQLState.extract(from: message)))
+        diagnosticEvents = Array(diagnosticEvents.suffix(100))
+    }
+    func setHistoryEnabled(_ enabled: Bool) {
+        historyEnabled = enabled
+        if !enabled { clearHistory() } else { saveWorkspace() }
+    }
+    func clearHistory() {
+        guard readyToSave else {
+            storageNotice = "Recuperação local ilegível: os arquivos anteriores foram preservados. Salve suas consultas em arquivos SQL; não foi possível limpar o histórico em disco."
+            record(.storageFailed); return
+        }
+        history = []; saveTask?.cancel()
+        do { try storage.eraseHistory(snapshot()) }
+        catch { storageNotice = "Não foi possível limpar o histórico local por completo."; record(.storageFailed) }
+    }
+    private func appendHistory(sql: String, server: String, database: String, start: Date, outcome: ExecutionOutcome) {
+        guard historyEnabled else { return }
+        // Bound persistence without silently cutting SQL that might later be reopened.
+        guard sql.utf8.count <= 2 * 1024 * 1024 else {
+            storageNotice = "Consulta acima de 2 MiB: execução não incluída no histórico."; return
+        }
+        history.insert(HistoryEntry(sql: sql, server: server, database: database, elapsed: Date().timeIntervalSince(start), outcome: outcome), at: 0)
+        history = HistoryEntry.bounded(history); saveWorkspace()
+    }
+    private func invalidateSessionState() {
+        sessionID = nil; transactionCount = nil; transactionState = nil; sessionCheckedAt = nil
+    }
+    func inspectSession() async {
+        guard connected, !executing else { return }
+        executing = true; defer { executing = false }
+        do {
+            let response = try await client.execute("DECLARE @sg_state int = XACT_STATE(); SELECT @@SPID, @@TRANCOUNT, @sg_state, DB_NAME();", timeout: 5, maxRows: 1)
+            guard response.success, let row = response.tables.first?.rows.first, row.count == 4,
+                  let count = row[1].flatMap(Int.init), let state = row[2].flatMap(Int.init) else {
+                throw StudioError.message("Estado da sessão indisponível.")
+            }
+            sessionID = row[0]; transactionCount = count; transactionState = state; sessionCheckedAt = Date()
+            if let name = row[3] { database = name }
+        } catch { invalidateSessionState(); record(.sessionStateUnavailable); self.error = "Não foi possível confirmar o estado da sessão." }
     }
     var activeIndex: Int { documents.firstIndex(where: { $0.id == activeID }) ?? 0 }
     var active: QueryDocument { documents[activeIndex] }
@@ -71,7 +180,7 @@ final class Workspace: ObservableObject {
     }
     func loadPassword() { password = PasswordStore.read(profile.credentialKey) ?? "" }
     func persistProfile() {
-        if let data = try? JSONEncoder().encode(profile) { UserDefaults.standard.set(data, forKey: "connection") }
+        if let data = try? JSONEncoder().encode(profile) { defaults.set(data, forKey: "connection") }
     }
     func connect() async {
         guard !connecting, !executing else { return }
@@ -80,7 +189,7 @@ final class Workspace: ObservableObject {
         await disconnect()
         do {
             try await client.connect(profile, password: password)
-            connected = true; database = profile.database
+            connected = true; database = profile.database; record(.connectionSucceeded)
             persistProfile()
             if rememberPassword {
                 do { try PasswordStore.save(password, account: profile.credentialKey) }
@@ -91,11 +200,13 @@ final class Workspace: ObservableObject {
                 try await metadata.connect(profile, password: password)
                 metadataAvailable = true
                 await refreshExplorer()
-            } catch { self.error = "Conectado ao editor. O explorador não pôde conectar: \(error.localizedDescription)" }
+            } catch { record(.metadataFailed); self.error = "Conectado ao editor. O explorador não pôde conectar: \(error.localizedDescription)" }
             password = ""
-        } catch { self.error = error.localizedDescription }
+        } catch { record(.connectionFailed, message: error.localizedDescription); self.error = error.localizedDescription }
     }
     func disconnect() async {
+        if connected { record(.disconnected) }
+        invalidateSessionState()
         objectRequest = UUID()
         connected = false; metadataAvailable = false
         databases = []; objects = []; loadingObjects = false
@@ -132,7 +243,7 @@ final class Workspace: ObservableObject {
                 guard row.count >= 3, let schema = row[0], let name = row[1], let type = row[2] else { return nil }
                 return DatabaseObject(schema: schema, name: name, kind: type.trimmingCharacters(in: .whitespaces))
             } ?? []
-        } catch { if objectRequest == request { self.error = error.localizedDescription } }
+        } catch { record(.metadataFailed); if objectRequest == request { self.error = error.localizedDescription } }
     }
     func selectDatabase(_ name: String) async {
         guard connected, !executing, name != database else { return }
@@ -142,6 +253,7 @@ final class Workspace: ObservableObject {
             let response = try await client.execute("USE \(SQLText.identifier(name));")
             guard response.success else { throw StudioError.message(response.messages) }
             database = name
+            invalidateSessionState()
             await loadObjects()
         } catch { self.error = error.localizedDescription }
     }
@@ -155,6 +267,10 @@ final class Workspace: ObservableObject {
         guard !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         executing = true
         let start = Date()
+        let executedServer = profile.host + ":" + String(profile.port)
+        let executedDatabase = database
+        cancelRequested = false
+        invalidateSessionState()
         defer { executing = false }
         do {
             let response = try await client.execute(sql, timeout: profile.timeout, maxRows: profile.rowLimit)
@@ -162,15 +278,30 @@ final class Workspace: ObservableObject {
                 documents[i].response = response
                 documents[i].elapsed = Date().timeIntervalSince(start)
             }
+            let outcome: ExecutionOutcome = response.success ? .success : (cancelRequested ? .canceled : .failure)
+            record(outcome == .success ? .querySucceeded : outcome == .canceled ? .queryCanceled : .queryFailed, message: response.messages)
+            appendHistory(sql: sql, server: executedServer, database: executedDatabase, start: start, outcome: outcome)
             resultTab = response.tables.isEmpty || !response.success ? "messages" : "results"
             if let current = await client.currentDatabase(), current != database {
                 database = current
                 if !databases.contains(current) { databases.append(current) }
                 await loadObjects()
             }
-        } catch { self.error = error.localizedDescription }
+        } catch {
+            record(cancelRequested ? .queryCanceled : .queryFailed, message: error.localizedDescription)
+            appendHistory(sql: sql, server: executedServer, database: executedDatabase, start: start, outcome: cancelRequested ? .canceled : .failure)
+            if let i = documents.firstIndex(where: { $0.id == id }) {
+                documents[i].response = SQLResponse(success: false, messages: error.localizedDescription)
+                documents[i].elapsed = Date().timeIntervalSince(start)
+            }
+            resultTab = "messages"; self.error = error.localizedDescription
+        }
     }
-    func cancel() { Task.detached { [client] in client.cancel() } }
+    func cancel() {
+        guard executing else { return }
+        cancelRequested = true; record(.cancelRequested)
+        Task.detached { [client] in client.cancel() }
+    }
     func newQuery(sql: String = "", title: String? = nil) {
         let doc = QueryDocument(title: title ?? "Consulta \(documents.count + 1)", sql: sql)
         documents.append(doc); activeID = doc.id
@@ -189,6 +320,7 @@ final class Workspace: ObservableObject {
         documents.removeAll { $0.id == id }
         if documents.isEmpty { newQuery() }
         else if activeID == id { activeID = documents[min(i, documents.count - 1)].id }
+        saveWorkspace()
     }
     func openQuery() {
         let panel = NSOpenPanel(); panel.allowedContentTypes = [.sqlText, .plainText]; panel.allowsMultipleSelection = true
@@ -210,8 +342,16 @@ final class Workspace: ObservableObject {
         }
         guard let url else { return false }
         do {
+            if FileManager.default.fileExists(atPath: url.path), let saved = documents[index].savedText,
+               let disk = try? String(contentsOf: url, encoding: .utf8), disk != saved {
+                let alert = NSAlert(); alert.messageText = "O arquivo mudou fora do SQLGarden."
+                alert.informativeText = "Substituir o arquivo pela versão desta aba? O rascunho local está preservado."
+                alert.addButton(withTitle: "Cancelar"); alert.addButton(withTitle: "Substituir")
+                guard alert.runModal() == .alertSecondButtonReturn else { return false }
+            }
             try documents[index].sql.write(to: url, atomically: true, encoding: .utf8)
             documents[index].url = url; documents[index].title = url.lastPathComponent; documents[index].savedText = documents[index].sql
+            saveWorkspace()
             return true
         } catch { self.error = error.localizedDescription; return false }
     }

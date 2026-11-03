@@ -57,6 +57,13 @@ import StudioCore
             }.navigationSplitViewColumnWidth(min: 230, ideal: 270, max: 360)
         } detail: {
             VStack(spacing: 0) {
+                if let notice = workspace.storageNotice {
+                    HStack {
+                        Label(notice, systemImage: "exclamationmark.triangle").font(.caption)
+                        Spacer()
+                        Button("Fechar aviso") { workspace.storageNotice = nil }.buttonStyle(.borderless)
+                    }.padding(9).background(.orange.opacity(0.15))
+                }
                 queryTabs
                 HSplitView {
                     VStack(spacing: 0) {
@@ -80,6 +87,9 @@ import StudioCore
                 Button { workspace.saveQuery() } label: { Label("Salvar", systemImage: "square.and.arrow.down") }.help("Salvar SQL · ⌘S")
             }
             ToolbarItem {
+                Button { workspace.historySheet = true } label: { Label("Histórico", systemImage: "clock.arrow.circlepath") }
+            }
+            ToolbarItem {
                 Button { workspace.dockerSheet = true } label: { Label("Docker", systemImage: "shippingbox") }
             }
             ToolbarItem {
@@ -90,7 +100,9 @@ import StudioCore
         }
         .sheet(isPresented: $workspace.connectionSheet) { ConnectionView() }
         .sheet(isPresented: $workspace.dockerSheet) { DockerView() }
-        .alert("Não foi possível concluir", isPresented: Binding(get: { workspace.error != nil && !workspace.connectionSheet && !workspace.dockerSheet }, set: { if !$0 { workspace.error = nil } })) {
+        .sheet(isPresented: $workspace.historySheet) { HistoryView() }
+        .sheet(isPresented: $workspace.feedbackSheet) { FeedbackView() }
+        .alert("Não foi possível concluir", isPresented: Binding(get: { workspace.error != nil && !workspace.connectionSheet && !workspace.dockerSheet && !workspace.historySheet && !workspace.feedbackSheet }, set: { if !$0 { workspace.error = nil } })) {
             Button("OK") { workspace.error = nil }
         } message: { Text(workspace.error ?? "") }
         .onChange(of: workspace.activeID) { _, _ in selectedResult = 0 }
@@ -138,6 +150,16 @@ import StudioCore
             } label: { Label(workspace.database, systemImage: "externaldrive") }
                 .menuStyle(.borderlessButton).fixedSize().disabled(!workspace.connected || workspace.executing)
             Text("T-SQL").font(.caption).foregroundStyle(.tertiary)
+            Menu {
+                Button("Buscar / substituir…") {
+                    let item = NSMenuItem(); item.tag = Int(NSTextFinder.Action.showFindInterface.rawValue)
+                    NSApp.sendAction(#selector(NSTextView.performFindPanelAction(_:)), to: nil, from: item)
+                }
+                Button("Ir para linha…") { NSApp.sendAction(#selector(SQLTextView.goToSQLLine(_:)), to: nil, from: nil) }
+                Button("Comentar / descomentar") { NSApp.sendAction(#selector(SQLTextView.toggleSQLComment(_:)), to: nil, from: nil) }
+                Button("Indentar") { NSApp.sendAction(#selector(SQLTextView.indentSQL(_:)), to: nil, from: nil) }
+                Button("Desindentar") { NSApp.sendAction(#selector(SQLTextView.unindentSQL(_:)), to: nil, from: nil) }
+            } label: { Image(systemName: "textformat") }.menuStyle(.borderlessButton).fixedSize().help("Ferramentas de edição")
             Spacer()
             if workspace.executing {
                 ProgressView().controlSize(.small)
@@ -173,11 +195,11 @@ import StudioCore
                         ForEach(Array(workspace.active.response.tables.enumerated()), id: \.element.id) { index, _ in Text("Resultado \(index + 1)").tag(index) }
                     }.pickerStyle(.menu).padding(.horizontal, 12).padding(.vertical, 5)
                 }
-                ResultsGrid(result: table)
+                ResultsGrid(result: table).id(table.id)
                 HStack {
                     Text("\(table.rows.count) linhas · \(table.columns.count) colunas")
                     if table.truncated { Label("Exibição limitada", systemImage: "info.circle").foregroundStyle(.orange) }
-                    Spacer(); Text("⌘C copia as linhas selecionadas")
+                    Spacer(); Text("CSV exporta todas as linhas carregadas")
                 }.font(.caption).foregroundStyle(.secondary).padding(8)
             } else {
                 ContentUnavailableView("Pronto para consultar", systemImage: "tablecells", description: Text("Os resultados aparecem aqui após executar uma consulta."))
@@ -200,9 +222,20 @@ import StudioCore
     private var statusBar: some View {
         HStack(spacing: 8) {
             Circle().fill(workspace.connected ? .green : .secondary).frame(width: 6, height: 6)
-            Text(workspace.connected ? "\(workspace.profile.username)@\(workspace.profile.host):\(String(workspace.profile.port))" : "Conecte ao SQL Server para começar")
+            Text(workspace.connected ? "\(workspace.profile.host):\(String(workspace.profile.port)) · \(workspace.database)" : "Conecte ao SQL Server para começar")
+                .lineLimit(1).textSelection(.enabled)
             Spacer()
             Text("Sessão compartilhada entre abas").help("USE, transações e tabelas temporárias pertencem à mesma sessão. O explorador usa outra conexão.")
+            if workspace.connected {
+                if let count = workspace.transactionCount {
+                    Label(count > 0 ? "Transação aberta (\(count))" : "Sem transação aberta", systemImage: count > 0 ? "exclamationmark.circle" : "checkmark.circle")
+                        .foregroundStyle(count > 0 ? .orange : .secondary)
+                        .help("Confirmado em \(workspace.sessionCheckedAt?.formatted() ?? "") · sessão \(workspace.sessionID ?? "?") · XACT_STATE \(workspace.transactionState ?? 0)")
+                }
+                Button(workspace.transactionCount == nil ? "Verificar transação" : "Verificar novamente") { Task { await workspace.inspectSession() } }
+                    .buttonStyle(.borderless).disabled(workspace.executing)
+                    .help("Lê XACT_STATE() antes de consultar @@SPID, @@TRANCOUNT e DB_NAME() na sessão. Não faz COMMIT/ROLLBACK. Como qualquer SELECT, altera @@ROWCOUNT e @@ERROR.")
+            }
             Divider().frame(height: 12)
             Text(String(format: "%.2f s", workspace.active.elapsed))
             Text("UTF-8").padding(.leading, 8)

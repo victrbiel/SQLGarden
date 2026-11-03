@@ -119,3 +119,29 @@ Microsoft/Homebrew são instaladas separadamente; não estão dentro do .app.
 O encerramento adia a resposta ao AppKit e apresenta uma sheet de confirmação
 para trabalho não salvo. O template inicial é marcado como conteúdo gerado,
 mas edições do usuário continuam marcadas como alterações.
+
+## Evolução 0.3.0
+
+`WorkspaceStorage` persiste somente rascunhos e histórico em JSON atômico com
+permissões 0600 (pasta 0700), com uma geração de backup. Falha de leitura nas
+duas gerações preserva os arquivos e desabilita sobrescrita automática; o usuário
+pode salvar seus SQLs separadamente. Autosave usa debounce de 300 ms e flush ao sair.
+Histórico não contém resultados nem mensagens brutas. Desativar/excluir regrava as
+duas gerações sem histórico. A recuperação nunca executa comandos ou reconecta.
+
+A régua usa índices UTF-16 do TextKit. Transformações de linhas preservam CRLF e
+Unicode e usam shouldChangeText/didChangeText para integrar o Undo do AppKit.
+Busca/substituição usa NSTextFinder. Nenhum autocomplete foi acrescentado.
+A grade AppKit mantém seleção retangular própria e cópia TSV escapada.
+
+O estado de transação é consultado somente por ação explícita do usuário na sessão
+do editor, pois SELECT de diagnóstico modifica @@ROWCOUNT/@@ERROR. Nova execução
+invalida a fotografia anterior. Nunca há COMMIT/ROLLBACK ou retry automático.
+
+Eventos técnicos são um enum fechado em memória (até 100), sem campo para strings
+de erro, SQL ou parâmetros. Apenas códigos SQLSTATE de uma enumeração fechada
+são extraídos das mensagens e podem acompanhar o evento. O relatório opcional combina esses eventos com versão,
+macOS, arquitetura e dependências ausentes. A composição usa NSSharingService
+composeEmail com corpo e TXT idênticos à revisão. Nenhum SMTP/credencial de e-mail
+é incorporado. Arquivos TXT de composição ficam em diretórios temporários privados;
+a entrega depende do serviço de e-mail e não é confirmada pelo SQLGarden.

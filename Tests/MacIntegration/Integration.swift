@@ -20,7 +20,9 @@ import StudioCore
             try require(database.hasPrefix("SQLGarden_Validacao_") && database.range(of: #"^[A-Za-z0-9_]+$"#, options: .regularExpression) != nil,
                         "O banco de teste precisa ter prefixo SQLGarden_Validacao_ e apenas letras, números e sublinhados.")
             var profile = ConnectionProfile()
-            profile.host = "localhost"; profile.port = 1433; profile.database = "master"
+            profile.host = ProcessInfo.processInfo.environment["SQLGARDEN_TEST_HOST"] ?? "localhost"
+            profile.port = Int(ProcessInfo.processInfo.environment["SQLGARDEN_TEST_PORT"] ?? "1433") ?? 1433
+            profile.database = "master"
             try await client.connect(profile, password: password)
             let edition = try await client.execute("SELECT CAST(SERVERPROPERTY('Edition') AS NVARCHAR(100)), CAST(SERVERPROPERTY('ProductVersion') AS NVARCHAR(100));")
             try require(edition.success && edition.tables.first?.rows.first?[0]?.contains("Express") == true, "A instância não confirmou a edição Express.")

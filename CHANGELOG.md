@@ -1,5 +1,18 @@
 # Histórico
 
+## 0.3.0 — 19/10/2026
+
+- Recuperação local de abas, rascunhos, seleção e aba ativa; backup de geração anterior.
+- Histórico pesquisável com contexto, duração e estado; exclusão e desativação.
+- Editor com régua de linhas, busca/substituição, navegação, comentários e indentação.
+- Grade com seleção de células, intervalos, cópia tabular, busca local e conteúdo longo.
+- Contexto do servidor/banco e verificação explícita de SPID, transações e XACT_STATE.
+- Feedback/bugs com diagnóstico técnico opcional, revisão editável, TXT e composição
+  de e-mail para sqlgarden@publicvictor.com; nenhum envio automático.
+- Preserva sessão compartilhada, GO, limites, erros parciais e cancelamento.
+- Sem autocomplete, IA, modo estudo, edição inline ou novas sessões por aba.
+- Distribuição universal e DMG visual com o fundo original.
+
 ## 0.2.0 — 19/10/2026
 
 - Autoria e copyright corrigidos para Victor; licença MIT e documentação pública.

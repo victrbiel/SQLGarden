@@ -6,6 +6,16 @@ Interface nativa SwiftUI/AppKit para trabalhar com Microsoft SQL Server Express:
 editor T-SQL, catálogo, GO, sessão persistente, resultados múltiplos, mensagens,
 CSV e credenciais opcionais no Chaves. Sem Python integrado.
 
+## Novidades 0.3.0
+
+- Recuperação automática de abas e rascunhos locais, com escrita atômica e backup.
+- Histórico pesquisável de SQL, contexto e duração; pode ser apagado/desativado.
+- Números de linha, buscar/substituir, ir para linha, comentários e indentação.
+- Seleção de células/intervalos, cópia com cabeçalhos, busca local e conteúdo longo.
+- Verificação explícita de sessão e transação, sem COMMIT/ROLLBACK automático.
+- Feedback para sqlgarden@publicvictor.com, revisão editável, diagnóstico técnico
+  opcional e composição no e-mail do macOS; copiar/salvar como alternativas.
+
 ## Instalar e usar
 
 Leia **[INSTALACAO.md](INSTALACAO.md)**. O DMG instala a interface. O driver
@@ -20,14 +30,17 @@ com teste físico em um Mac Intel. A assinatura atual é ad hoc, sem notarizaç�
 ## Desenvolver
 
 Requisitos: macOS 14+, Swift 5.9+ e ferramentas Xcode/Command Line Tools. O app
-não tem pacotes Swift externos. O catálogo de recursos usa `actool` do Xcode;
+não tem pacotes Swift externos. O DMG visual usa Python 3 e `dmgbuild` apenas no empacotamento de desenvolvimento; o usuário do app não precisa deles. O catálogo de recursos usa `actool` do Xcode;
 para gerar o pacote visual completo é necessário o Xcode com essa ferramenta.
 
 ```bash
 bash scripts/test.sh
+bash scripts/test-ui.sh # macOS; integração opcional pelas variáveis documentadas
 bash scripts/build-app.sh release universal
 open dist/SQLGarden.app
-bash scripts/build-dmg.sh
+python3 -m venv .dmg-venv
+.dmg-venv/bin/pip install -r scripts/requirements-dmg.txt
+SQLGARDEN_DMG_PYTHON="$PWD/.dmg-venv/bin/python" bash scripts/build-dmg.sh
 ```
 
 `build-app.sh release native` compila só a arquitetura atual. `test.sh` usa Python
@@ -56,8 +69,8 @@ criada pelo teste principal; encerra somente a sessão que o próprio teste inic
 Não replica todos os recursos do SSMS: sem designers, edição inline, diagramas,
 planos gráficos, restore assistido, SQLCMD, autenticação Windows ou Python.
 O destaque de sintaxe é simplificado. `GO /* comentário */` não é suportado;
-use GO em linha própria ou com comentário `--`. Abas não são restauradas ao
-reabrir; salve seus SQLs. Cancelar não executa ROLLBACK automaticamente.
+use GO em linha própria ou com comentário `--`. Rascunhos são recuperados localmente;
+salve também seus SQLs em arquivos para manter cópias próprias. Cancelar não executa ROLLBACK automaticamente.
 Resultados são limitados a aproximadamente 32 MiB, 64 conjuntos e 512 colunas;
 células grandes são limitadas e binários são exibidos em hexadecimal.
 

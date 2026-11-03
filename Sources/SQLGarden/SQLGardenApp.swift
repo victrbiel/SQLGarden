@@ -13,22 +13,18 @@ import StudioCore
             if let window = sender.mainWindow { alert.beginSheetModal(for: window) }
             return .terminateCancel
         }
-        guard workspace.documents.contains(where: \.dirty) else { return .terminateNow }
+        if workspace.saveWorkspace() { return .terminateNow }
         let alert = NSAlert()
-        alert.messageText = "Há consultas com alterações não salvas."
-        alert.informativeText = "Volte ao editor para salvá-las, ou encerre descartando as alterações."
+        alert.messageText = "A recuperação local não pôde ser salva."
+        alert.informativeText = "Volte e salve suas consultas em arquivos SQL antes de encerrar."
         alert.addButton(withTitle: "Voltar")
-        alert.addButton(withTitle: "Encerrar e descartar")
-        // Reply only after returning from applicationShouldTerminate. A sheet
-        // keeps the main run loop responsive while termination is pending.
+        alert.addButton(withTitle: "Encerrar sem recuperação")
         DispatchQueue.main.async {
             if let window = sender.mainWindow {
                 alert.beginSheetModal(for: window) { result in
                     sender.reply(toApplicationShouldTerminate: result == .alertSecondButtonReturn)
                 }
-            } else {
-                sender.reply(toApplicationShouldTerminate: alert.runModal() == .alertSecondButtonReturn)
-            }
+            } else { sender.reply(toApplicationShouldTerminate: alert.runModal() == .alertSecondButtonReturn) }
         }
         return .terminateLater
     }
@@ -71,6 +67,8 @@ import StudioCore
                 }
             }
             CommandGroup(replacing: .help) {
+                Button("Enviar feedback ou relatar problema…") { workspace.feedbackSheet = true }
+                Divider()
                 Button("Guia de instalação e uso") {
                     if let url = Bundle.main.url(forResource: "INSTALACAO", withExtension: "md") { NSWorkspace.shared.open(url) }
                 }
@@ -86,11 +84,27 @@ import StudioCore
                 Button("Salvar consulta") { workspace.saveQuery() }.keyboardShortcut("s")
                 Button("Fechar consulta") { workspace.closeQuery(workspace.activeID) }.keyboardShortcut("w", modifiers: [.command, .shift]).disabled(workspace.executing)
             }
+            CommandGroup(after: .textEditing) {
+                Button("Buscar no editor…") {
+                    let item = NSMenuItem(); item.tag = Int(NSTextFinder.Action.showFindInterface.rawValue)
+                    NSApp.sendAction(#selector(NSTextView.performFindPanelAction(_:)), to: nil, from: item)
+                }.keyboardShortcut("f")
+                Button("Buscar e substituir…") {
+                    let item = NSMenuItem(); item.tag = Int(NSTextFinder.Action.showReplaceInterface.rawValue)
+                    NSApp.sendAction(#selector(NSTextView.performFindPanelAction(_:)), to: nil, from: item)
+                }.keyboardShortcut("f", modifiers: [.command, .option])
+                Button("Ir para linha…") { NSApp.sendAction(#selector(SQLTextView.goToSQLLine(_:)), to: nil, from: nil) }.keyboardShortcut("l")
+                Button("Comentar / descomentar") { NSApp.sendAction(#selector(SQLTextView.toggleSQLComment(_:)), to: nil, from: nil) }.keyboardShortcut("/")
+                Button("Indentar SQL") { NSApp.sendAction(#selector(SQLTextView.indentSQL(_:)), to: nil, from: nil) }.keyboardShortcut("]")
+                Button("Desindentar SQL") { NSApp.sendAction(#selector(SQLTextView.unindentSQL(_:)), to: nil, from: nil) }.keyboardShortcut("[")
+            }
             CommandMenu("Consulta") {
                 Button("Executar seleção ou consulta") { Task { await workspace.execute() } }
                     .keyboardShortcut(.return, modifiers: .command).disabled(!workspace.connected || workspace.executing)
                 Button("Parar execução") { workspace.cancel() }.keyboardShortcut(".", modifiers: .command).disabled(!workspace.executing)
                 Divider()
+                Button("Histórico de consultas…") { workspace.historySheet = true }.keyboardShortcut("h", modifiers: [.command, .shift])
+                Button("Verificar estado da sessão") { Task { await workspace.inspectSession() } }.disabled(!workspace.connected || workspace.executing)
                 Button("Atualizar explorador") { Task { await workspace.refreshExplorer() } }.disabled(!workspace.connected)
                 Button("Conectar…") { workspace.loadPassword(); workspace.connectionSheet = true }.disabled(workspace.connected || workspace.connecting || workspace.executing)
             }

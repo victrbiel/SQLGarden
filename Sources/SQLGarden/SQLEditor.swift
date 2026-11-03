@@ -11,10 +11,11 @@ struct SQLEditor: NSViewRepresentable {
         let scroll = NSScrollView()
         scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = true
         scroll.borderType = .noBorder; scroll.autohidesScrollers = true
-        let editor = NSTextView(frame: .zero)
+        let editor = SQLTextView(frame: .zero)
         editor.isRichText = false; editor.isAutomaticQuoteSubstitutionEnabled = false
         editor.isAutomaticDashSubstitutionEnabled = false; editor.isAutomaticTextReplacementEnabled = false
         editor.isAutomaticSpellingCorrectionEnabled = false; editor.isContinuousSpellCheckingEnabled = false
+        editor.isAutomaticTextCompletionEnabled = false
         editor.isGrammarCheckingEnabled = false; editor.isAutomaticLinkDetectionEnabled = false
         editor.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
         editor.textContainerInset = NSSize(width: 20, height: 18)
@@ -24,9 +25,13 @@ struct SQLEditor: NSViewRepresentable {
         editor.autoresizingMask = [.width]
         editor.textContainer?.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         editor.textContainer?.widthTracksTextView = false
+        editor.usesFindBar = true; editor.isIncrementalSearchingEnabled = true
         editor.allowsUndo = true; editor.delegate = context.coordinator
         editor.backgroundColor = .textBackgroundColor
         scroll.documentView = editor
+        let ruler = LineNumberRuler(scroll: scroll, editor: editor)
+        scroll.verticalRulerView = ruler; scroll.hasVerticalRuler = true; scroll.rulersVisible = true
+        context.coordinator.ruler = ruler
         context.coordinator.editor = editor
         return scroll
     }
@@ -51,6 +56,7 @@ struct SQLEditor: NSViewRepresentable {
         var parent: SQLEditor
         var identity: UUID?
         weak var editor: NSTextView?
+        weak var ruler: LineNumberRuler?
         var updating = false
         init(_ parent: SQLEditor) { self.parent = parent }
         func textDidChange(_ notification: Notification) {
@@ -64,6 +70,7 @@ struct SQLEditor: NSViewRepresentable {
         }
         func highlight() {
             guard let editor, let storage = editor.textStorage else { return }
+            ruler?.updateLines()
             let source = editor.string
             let range = NSRange(location: 0, length: (source as NSString).length)
             updating = true; defer { updating = false }

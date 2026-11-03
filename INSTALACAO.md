@@ -1,4 +1,4 @@
-# SQLGarden 0.2.0 — instalação e uso no Mac
+# SQLGarden 0.3.0 — instalação e uso no Mac
 
 **Desenvolvido por Victor · Código aberto, licença MIT.**
 
@@ -8,7 +8,7 @@ O aplicativo não inclui Python e não executa código Python.
 
 ## 1. O que vem nesta entrega
 
-- `SQLGarden-0.2.0-Universal.dmg`: imagem de instalação, com app e atalho para Aplicativos.
+- `SQLGarden-0.3.0-Universal.dmg`: imagem de instalação, com app e atalho para Aplicativos.
 - `INSTALACAO.md`: este guia.
 - `SQLGarden-fonte/`: projeto completo, artes originais, licença, testes e scripts de build.
 - `SHA256SUMS.txt`: soma de verificação dos arquivos da entrega.
@@ -37,7 +37,7 @@ que o app foi executado fisicamente em todas essas combinações.
 
 ## 3. Instalar o aplicativo
 
-1. Extraia o ZIP e abra `SQLGarden-0.2.0-Universal.dmg`.
+1. Extraia o ZIP e abra `SQLGarden-0.3.0-Universal.dmg`.
 2. Arraste **SQLGarden.app** para **Aplicativos**. Se já usa o SQLGarden, salve
    suas consultas e encerre a versão anterior antes de substituir o app.
 3. Ejete a imagem DMG depois de copiar. Abra o app a partir de Aplicativos.
@@ -198,16 +198,78 @@ uma conexão separada. Não há COMMIT, ROLLBACK ou reenvio automáticos.
 | Executar seleção/arquivo | ⌘↩ |
 | Parar consulta | ⌘. |
 | Fechar aba | ⇧⌘W |
-| Copiar linhas selecionadas da grade | ⌘C |
+| Buscar no editor | ⌘F |
+| Buscar e substituir | ⌥⌘F |
+| Ir para linha | ⌘L |
+| Comentar/descomentar linhas | ⌘/ |
+| Indentar/desindentar | ⌘] / ⌘[ |
+| Histórico | ⇧⌘H |
+| Copiar células selecionadas | ⌘C |
+| Copiar células com cabeçalhos | ⇧⌘C |
 
 Use o seletor para alternar entre múltiplos resultados e o painel **Mensagens**
 para PRINT, contagens e erros. **CSV** exporta o conjunto exibido. O limite de
 linhas é de exibição e não acrescenta TOP à sua consulta. Se aparecer **Exibição
 limitada**, o CSV também será parcial. NULL é campo sem aspas; texto vazio é `""`.
 
-Salve seus scripts `.sql` em UTF-8. As abas não são restauradas automaticamente
-na próxima abertura. O app avisa sobre alterações não salvas ao encerrar.
-Parar uma consulta não desfaz automaticamente tudo que já foi executado.
+### Recuperação e histórico
+
+As abas e os rascunhos são salvos automaticamente neste Mac aproximadamente
+0,3 segundo após a última edição e ao encerrar. Ao reabrir, o app recupera
+somente texto, arquivo associado, seleção e aba ativa: não reconecta, não
+executa SQL, não restaura resultados e não recria transações ou temporárias.
+Uma interrupção durante os últimos 0,3 segundo ainda pode perder a edição mais
+recente. Arquivos SQL continuam sendo suas cópias permanentes.
+Ao fechar uma aba, Salvar grava o arquivo e Descartar remove o rascunho dessa aba.
+O histórico de execuções é independente e pode ainda conter SQL executado.
+
+O histórico guarda SQL, servidor, banco, data, duração e sucesso/erro/cancelamento,
+sem guardar resultados ou mensagens de erro. Use **Consulta → Histórico** para
+buscar e reabrir apenas o texto numa aba. O contexto original é informativo;
+a conexão atual não é trocada. Desativar apaga o histórico das duas gerações de
+recuperação e impede novas gravações. Limites: 500 execuções, cerca de 8 MiB;
+consultas individuais acima de 2 MiB não entram no histórico.
+Os textos SQL podem conter dados que você escreveu; considere isso ao usar um
+Mac compartilhado. Os arquivos locais têm permissão restrita ao seu usuário.
+A localização é `~/Library/Application Support/app.sqlgarden.mac/`.
+Recuperação de rascunhos continua ativa mesmo com histórico desativado.
+
+### Resultados e sessão
+
+Clique numa célula para selecionar, use Shift+clique para selecionar um retângulo
+e ⌘A para selecionar toda a grade carregada. Setas navegam; Shift+setas ampliam
+a seleção. Duplo clique ou Return abre o conteúdo da célula. O menu de contexto
+permite copiar com cabeçalhos e linhas completas. Texto literal `NULL` é
+colocado entre aspas na cópia tabular; ausência de valor é NULL sem aspas.
+Valores com tabs, quebras de linha e aspas são delimitados e escapados.
+A busca filtra somente as linhas já carregadas. CSV exporta todas as linhas
+carregadas do resultado, inclusive as ocultas pela busca. Se o resultado foi
+limitado, busca e CSV não acessam as linhas que não foram recebidas.
+
+Use **Verificar transação** para consultar a mesma sessão com
+`DECLARE @sg_state int = XACT_STATE(); SELECT @@SPID, @@TRANCOUNT, @sg_state, DB_NAME();`.
+A leitura de XACT_STATE é separada para evitar a interferência observada ao combinar essa função com @@SPID no mesmo SELECT. O estado fica pendente
+após nova execução ou troca de banco, até você verificar novamente. Isso evita
+consultas ocultas após seus scripts: como qualquer SELECT, a verificação explícita
+altera valores como @@ROWCOUNT e @@ERROR. É uma fotografia, não um monitor contínuo.
+Parar uma consulta não faz ROLLBACK. O app não confirma nem desfaz transações por você.
+
+### Feedback e problemas
+
+Abra **Ajuda → Enviar feedback ou relatar problema**. Escreva a descrição e os
+passos; se desejar, marque o diagnóstico opcional, desligado inicialmente.
+Ele contém versão do app/macOS, arquitetura, dependências ausentes e até 100
+eventos técnicos desta abertura. Não contém SQL, resultados, credenciais,
+nomes de servidores/bancos, caminhos pessoais nem mensagens brutas do driver.
+Não coleta crash dumps nem logs globais do computador.
+
+Revise o relatório completo: ele é editável. **Preparar e-mail** solicita ao
+serviço de e-mail do macOS uma mensagem para **sqlgarden@publicvictor.com**,
+com o conteúdo revisado no corpo e em um anexo TXT. Você envia no aplicativo
+de e-mail; o SQLGarden não envia em segundo plano nem confirma a entrega.
+Se o serviço não estiver configurado, use **Copiar relatório** ou **Salvar
+relatório** e envie pelo seu webmail. O texto escrito manualmente por você
+pode conter informações pessoais; remova-as antes de enviar.
 
 Aparência: use **View/Visualizar → Aparência → Sistema, Claro ou Escuro**.
 A logo interna e o ícone do Dock acompanham a aparência do app. O ícone
@@ -234,9 +296,8 @@ isso não é um ícone adaptativo do Icon Composer.
   Pare o servidor e feche Docker quando não estiver usando. Alterar limites exige
   novos testes; não diminua a memória de um ambiente importante sem verificar.
 
-Antes de pedir ajuda, envie versão do SQLGarden/macOS, arquitetura do Mac e o
-texto do erro. Remova senhas, dados pessoais e resultados privados. Não envie
-uma exportação completa dos metadados do container.
+Para pedir ajuda, use o relatório revisável em Ajuda. Nunca envie senhas,
+dados pessoais, resultados privados ou exportações completas do container.
 
 ## 9. Atualizar, desinstalar e contribuir
 
