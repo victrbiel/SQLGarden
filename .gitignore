@@ -1,0 +1,13 @@
+.build/
+.swiftpm/
+.test-build/
+dist/
+.DS_Store
+._*
+.env
+.env.*
+*.xcuserstate
+xcuserdata/
+.dmg-venv/
+__pycache__/
+*.log
