@@ -59,6 +59,7 @@ import SwiftUI
             }.formStyle(.grouped).disabled(workspace.connecting || workspace.connected)
             HStack {
                 if workspace.connected {
+                    Text("Desconectar encerra a sessão e desfaz transações não confirmadas.").font(.caption).foregroundStyle(.secondary)
                     Button("Desconectar", role: .destructive) { Task { await workspace.disconnect() } }
                 }
                 Spacer()
@@ -71,7 +72,7 @@ import SwiftUI
             }
         }.padding(24).frame(width: 540, height: 660)
             .interactiveDismissDisabled(workspace.connecting)
-            .task(id: workspace.profile.credentialKey) { await workspace.loadPassword() }
+            .task(id: workspace.profile.credentialKey) { if workspace.rememberPassword { await workspace.loadPassword() } }
             .onDisappear { workspace.useManualPassword() }
             .alert("Conexão", isPresented: Binding(get: { workspace.error != nil }, set: { if !$0 { workspace.error = nil } })) {
                 Button("OK") { workspace.error = nil }

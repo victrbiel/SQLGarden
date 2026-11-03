@@ -6,7 +6,16 @@ Interface nativa SwiftUI/AppKit para trabalhar com Microsoft SQL Server Express:
 editor T-SQL, catálogo, GO, sessão persistente, resultados múltiplos, mensagens,
 CSV e credenciais opcionais no Chaves. Sem Python integrado.
 
-## Correções 0.3.1
+## Atualização 0.4.0
+
+- Digitação de aspas e acentos preserva a composição do teclado.
+- Explorador com seletor de banco, esquemas, contagens e ações por objeto.
+- Painéis de arquivos assíncronos vinculados à janela.
+- Falhas de transporte invalidam a conexão; interrupções avisam sobre transações.
+- Leitura de resultados continua após DML sem linhas afetadas, inclusive TRY/CATCH.
+- Preferência de senha persistida, inicialmente desativada.
+
+## Correções anteriores 0.3.1
 
 - SQL original preservado, incluindo CRLF/CR e marcas Unicode junto a aspas.
 - NUL na entrada é rejeitado antes de qualquer lote; resultados com NUL são preservados.

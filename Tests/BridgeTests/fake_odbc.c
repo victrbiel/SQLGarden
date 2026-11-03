@@ -30,7 +30,7 @@ S SQLExecDirect(void *h,unsigned char *sql,I length) {
         for(int i=0;i<5000 && !atomic_load(&s->canceled);i++) nanosleep(&pause,NULL);
         return -1;
     }
-    return !strcmp(s->sql,"ERROR") ? -1 : (!strcmp(s->sql,"MULTI") ? 1 : 0);
+    return !strcmp(s->sql,"ZERO_FIRST") ? 100 : !strcmp(s->sql,"ERROR") ? -1 : (!strcmp(s->sql,"MULTI") ? 1 : 0);
 }
 S SQLNumResultCols(void *h,S *cols) { Statement *s=h;*cols=(!strcmp(s->sql,"MULTI") && s->set==1) ? 0 : (!strcmp(s->sql,"VALUES") ? 4 : 1); return 0; }
 S SQLDescribeCol(void *h,U col,unsigned char *name,S capacity,S *length,S *type,UL *size,S *scale,S *nullable) {
@@ -73,7 +73,7 @@ S SQLGetData(void *h,U col,S type,void *output,L capacity,L *indicator) {
     return remaining>limit || !strcmp(s->sql,"BINARY_WARN") ? 1 : 0;
 }
 S SQLRowCount(void *h,L *count) { Statement *s=h;*count=(!strcmp(s->sql,"MULTI") && s->set==1) ? 7 : -1;return 0; }
-S SQLMoreResults(void *h) { Statement *s=h;s->row=0;s->offset=0;s->column=0;return !strcmp(s->sql,"MULTI") && ++s->set<3 ? 0 : 100; }
+S SQLMoreResults(void *h) { Statement *s=h;s->row=0;s->offset=0;s->column=0;return (!strcmp(s->sql,"MULTI") && ++s->set<3) || (!strcmp(s->sql,"ZERO_FIRST") && ++s->set==1) ? 0 : 100; }
 S SQLGetDiagRec(S kind,void *h,S record,unsigned char *state,I *native,unsigned char *message,S capacity,S *length) {
     (void)kind;(void)h;if(record>1) return 100;
     strcpy((char *)state,"42000");*native=50000;snprintf((char *)message,(size_t)capacity,"Mensagem de teste: ação");*length=(S)strlen((char *)message);return 0;

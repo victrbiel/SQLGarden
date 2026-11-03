@@ -6,6 +6,7 @@ import StudioCore
     weak var workspace: Workspace?
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let workspace else { return .terminateNow }
+        if workspace.fileDialogOpen { return .terminateCancel }
         if workspace.executing {
             let alert = NSAlert()
             alert.messageText = "Há uma consulta em execução."
@@ -78,11 +79,11 @@ import StudioCore
             }
             CommandGroup(replacing: .newItem) {
                 Button("Nova consulta") { workspace.newQuery() }.keyboardShortcut("n")
-                Button("Abrir SQL…") { workspace.openQuery() }.keyboardShortcut("o")
+                Button("Abrir SQL…") { Task { await workspace.openQuery() } }.keyboardShortcut("o")
             }
             CommandGroup(replacing: .saveItem) {
-                Button("Salvar consulta") { workspace.saveQuery() }.keyboardShortcut("s")
-                Button("Fechar consulta") { workspace.closeQuery(workspace.activeID) }.keyboardShortcut("w", modifiers: [.command, .shift]).disabled(workspace.executing)
+                Button("Salvar consulta") { Task { await workspace.saveQuery() } }.keyboardShortcut("s")
+                Button("Fechar consulta") { Task { await workspace.closeQuery(workspace.activeID) } }.keyboardShortcut("w", modifiers: [.command, .shift]).disabled(workspace.executing)
             }
             CommandGroup(after: .textEditing) {
                 Button("Buscar no editor…") {

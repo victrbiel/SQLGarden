@@ -68,7 +68,7 @@ private actor CredentialGate {
             try invalidUTF8.write(to: fileURL)
             workspace.documents[0].url = fileURL; workspace.documents[0].savedText = "SELECT 1;"
             workspace.documents[0].sql = "SELECT 2;"
-            let savedInvalidFile = workspace.saveQuery()
+            let savedInvalidFile = await workspace.saveQuery()
             let diskAfterSave = try Data(contentsOf: fileURL)
             try check(!savedInvalidFile && diskAfterSave == invalidUTF8 && workspace.error != nil,
                       "arquivo alterado para conteúdo ilegível não é sobrescrito silenciosamente")
@@ -115,6 +115,26 @@ private actor CredentialGate {
             try await Task.sleep(nanoseconds: 600_000_000)
             let recovered = Workspace(storageDirectory: root, defaults: defaults)
             try check(recovered.activeID == docID && recovered.active.sql.contains("edição recuperável") && recovered.active.selection == NSRange(location: 7, length: 4), "autosave recupera rascunho, aba ativa, Unicode e seleção sem conexão")
+            workspace.rememberPassword = true
+            let preference = Workspace(storageDirectory: root.appendingPathComponent("preference"), defaults: defaults)
+            try check(preference.rememberPassword, "preferência do Chaves é persistida")
+            workspace.rememberPassword = false
+            await workspace.handleExecutionFailure("[08S01] transporte indisponível")
+            try check(!workspace.connected && workspace.sessionNotice?.contains("Reconecte") == true, "falha de transporte invalida conexão sem retry")
+            await workspace.handleExecutionFailure("[HY008] cancelado")
+            try check(workspace.sessionNotice?.contains("ROLLBACK") == true, "cancelamento explica risco de transação pendente")
+            var compositionModel = ""
+            let sqlParent = SQLEditor(text: Binding(get: { compositionModel }, set: { compositionModel = $0 }), selection: .constant(NSRange()), identity: UUID())
+            let composition = SQLEditor.Coordinator(sqlParent)
+            let input = SQLTextView(frame: NSRect(x: 0, y: 0, width: 300, height: 200))
+            composition.editor = input
+            input.setMarkedText("'", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+            composition.textDidChange(Notification(name: NSText.didChangeNotification))
+            composition.highlight()
+            try check(input.hasMarkedText() && input.string == "'" && compositionModel.isEmpty, "destaque e binding preservam composição pendente")
+            input.unmarkText()
+            composition.textDidChange(Notification(name: NSText.didChangeNotification))
+            try check(compositionModel == "'", "composição confirmada chega ao modelo")
             let editor = SQLTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 300))
             let editorWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
             editorWindow.contentView = editor; editorWindow.makeFirstResponder(editor)

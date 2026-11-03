@@ -1,4 +1,4 @@
-# SQLGarden 0.3.1 — instalação e uso no Mac
+# SQLGarden 0.4.0 — instalação e uso no Mac
 
 **Desenvolvido por Victor · Código aberto, licença MIT.**
 
@@ -8,7 +8,7 @@ O aplicativo não inclui Python e não executa código Python.
 
 ## 1. O que vem nesta entrega
 
-- `SQLGarden-0.3.1-Universal.dmg`: imagem de instalação, com app e atalho para Aplicativos.
+- `SQLGarden-0.4.0-Universal.dmg`: imagem de instalação, com app e atalho para Aplicativos.
 - `INSTALACAO.md`: este guia.
 - `SQLGarden-fonte/`: projeto completo, artes originais, licença, testes e scripts de build.
 - `SHA256SUMS.txt`: soma de verificação dos arquivos da entrega.
@@ -38,7 +38,7 @@ que o app foi executado fisicamente em todas essas combinações.
 
 ## 3. Instalar o aplicativo
 
-1. Extraia o ZIP e abra `SQLGarden-0.3.1-Universal.dmg`.
+1. Extraia o ZIP e abra `SQLGarden-0.4.0-Universal.dmg`.
 2. Arraste **SQLGarden.app** para **Aplicativos**. Se já usa o SQLGarden, salve
    suas consultas e encerre a versão anterior antes de substituir o app.
 3. Ejete a imagem DMG depois de copiar. Abra o app a partir de Aplicativos.
@@ -322,7 +322,7 @@ Docker e Homebrew mantêm seus próprios termos. Não há vínculo ou endosso Mi
 - [Homebrew](https://brew.sh)
 
 
-## Correções de integridade da 0.3.1
+## Correções de integridade da 0.4.0
 
 Quebras de linha CRLF/CR dentro de strings são preservadas. NUL no documento
 é rejeitado antes de enviar qualquer lote; NUL em resultados continua no valor
@@ -336,3 +336,16 @@ continua sendo controlado pelo próprio sistema.
 Arquivos alterados fora do app só são sobrescritos após confirmação; se o conteúdo
 atual não puder ser lido em UTF-8, o salvamento é interrompido para preservar o
 arquivo externo. Mudanças Unicode com bytes diferentes também contam como edição.
+
+
+## Explorador e correções 0.4.0
+
+Selecione o banco em **Banco ativo**. Os objetos aparecem por tipo e esquema;
+use a busca para localizar tabela, view ou esquema. Clique no objeto para preparar
+SQL; use o menu de ações para colunas, definição ou nome qualificado. Nenhuma
+consulta de dados é executada automaticamente ao abrir um objeto.
+
+Aspas e composição do teclado foram corrigidas. Painéis SQL/CSV abrem como sheets
+na janela. Perda de transporte exige reconexão manual, sem repetir comandos.
+Após erro/cancelamento, o aviso lembra que pode existir transação pendente.
+A preferência de guardar senha é preservada e começa desativada em instalações novas.

@@ -225,6 +225,12 @@ char *sg_execute(SGSession *s,const char *sql,unsigned timeout_seconds,unsigned 
     Small rc=s->api.exec(stmt,(Char *)sql,NTS);
     if(rc==INFO || (!GOOD(rc) && rc!=NO_DATA)) diagnostics(s,STMT,stmt,&msg);
     if(!GOOD(rc) && rc!=NO_DATA) success=0;
+    /* SQLExecDirect may return SQL_NO_DATA for zero-row DML before later results. */
+    if(rc==NO_DATA) {
+        rc=s->api.more(stmt);
+        if(rc==INFO || (!GOOD(rc) && rc!=NO_DATA)) diagnostics(s,STMT,stmt,&msg);
+        if(!GOOD(rc) && rc!=NO_DATA) success=0;
+    }
     while(success && rc!=NO_DATA) {
         if(count>=64) { add(&msg,"\nLimite de 64 resultados atingido. Execução interrompida; comandos pendentes podem não ter sido executados."); success=0; break; }
         Small cols=0;

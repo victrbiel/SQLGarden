@@ -1,5 +1,13 @@
 # Histórico
 
+## 0.4.0 — 28/10/2026
+
+- Corrige entrada de aspas/acentos, leitura de resultados após DML vazio e estado de conexão perdida.
+- Aviso sobre transações pendentes, preferência de senha persistida e painéis de arquivos assíncronos.
+- Explorador agrupado por tipo/esquema com seletor de banco, busca e ações por objeto.
+- Mantém correções anteriores e não altera autocomplete.
+
+
 ## 0.3.1 — 21/10/2026
 
 - Preserva CRLF/CR e linhas originais ao reconhecer GO.

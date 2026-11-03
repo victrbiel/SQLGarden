@@ -13,36 +13,7 @@ import StudioCore
                 connectionCard
                 Divider()
                 if workspace.connected {
-                    List {
-                        Section("Bancos de dados") {
-                            ForEach(workspace.databases, id: \.self) { name in
-                                Button { Task { await workspace.selectDatabase(name) } } label: {
-                                    HStack {
-                                        Label(name, systemImage: "externaldrive")
-                                        Spacer()
-                                        if name == workspace.database { Image(systemName: "checkmark").foregroundStyle(.tint) }
-                                    }.contentShape(Rectangle())
-                                }.buttonStyle(.plain).disabled(workspace.executing)
-                            }
-                        }
-                        ForEach(groups, id: \.0) { group in
-                            Section(group.0) {
-                                let objects = workspace.objects.filter { group.1.contains($0.kind) && (workspace.search.isEmpty || "\($0.schema).\($0.name)".localizedCaseInsensitiveContains(workspace.search)) }
-                                ForEach(objects) { object in
-                                    Button { workspace.showObject(object) } label: {
-                                        Label("\(object.schema).\(object.name)", systemImage: object.icon)
-                                            .lineLimit(1).help("Abrir consulta para \(object.schema).\(object.name)")
-                                    }.buttonStyle(.plain)
-                                        .contextMenu {
-                                            Button("Abrir consulta") { workspace.showObject(object) }
-                                            Button("Consultar colunas") { workspace.showColumns(object) }
-                                        }
-                                }
-                                if objects.isEmpty { Text(workspace.loadingObjects ? "Carregando…" : "Nenhum objeto").foregroundStyle(.tertiary).font(.caption) }
-                            }
-                        }
-                    }.listStyle(.sidebar)
-                        .searchable(text: $workspace.search, placement: .sidebar, prompt: "Buscar objeto")
+                    DatabaseExplorer()
                 } else {
                     ContentUnavailableView("Seu banco, no Mac", systemImage: "externaldrive.badge.plus", description: Text("Conecte ao SQL Server para explorar seus bancos."))
                     Spacer()
@@ -64,6 +35,13 @@ import StudioCore
                         Button("Fechar aviso") { workspace.storageNotice = nil }.buttonStyle(.borderless)
                     }.padding(9).background(.orange.opacity(0.15))
                 }
+                if let notice = workspace.sessionNotice {
+                    HStack {
+                        Label(notice, systemImage: "exclamationmark.triangle").font(.caption)
+                        Spacer()
+                        if workspace.connected { Button("Verificar sessão") { Task { await workspace.inspectSession() } }.disabled(workspace.executing) }
+                    }.padding(9).background(.orange.opacity(0.15))
+                }
                 queryTabs
                 HSplitView {
                     VStack(spacing: 0) {
@@ -76,15 +54,15 @@ import StudioCore
                     }
                 }
                 statusBar
-            }.frame(minWidth: 630)
+            }.frame(minWidth: 630).disabled(workspace.fileDialogOpen)
         }
         .navigationTitle("SQLGarden")
         .navigationSubtitle(workspace.connected ? "\(workspace.profile.host) · \(workspace.database)" : "Workspace SQL")
         .toolbar {
             ToolbarItemGroup {
                 Button { workspace.newQuery() } label: { Label("Nova consulta", systemImage: "square.and.pencil") }.help("Nova consulta · ⌘N")
-                Button { workspace.openQuery() } label: { Label("Abrir", systemImage: "folder") }.help("Abrir SQL · ⌘O")
-                Button { workspace.saveQuery() } label: { Label("Salvar", systemImage: "square.and.arrow.down") }.help("Salvar SQL · ⌘S")
+                Button { Task { await workspace.openQuery() } } label: { Label("Abrir", systemImage: "folder") }.help("Abrir SQL · ⌘O")
+                Button { Task { await workspace.saveQuery() } } label: { Label("Salvar", systemImage: "square.and.arrow.down") }.help("Salvar SQL · ⌘S")
             }
             ToolbarItem {
                 Button { workspace.historySheet = true } label: { Label("Histórico", systemImage: "clock.arrow.circlepath") }
@@ -131,7 +109,7 @@ import StudioCore
                                     if doc.dirty { Circle().frame(width: 5, height: 5).foregroundStyle(.secondary) }
                                 }
                             }.buttonStyle(.plain)
-                            Button { workspace.closeQuery(doc.id) } label: { Image(systemName: "xmark").font(.system(size: 9, weight: .semibold)) }
+                            Button { Task { await workspace.closeQuery(doc.id) } } label: { Image(systemName: "xmark").font(.system(size: 9, weight: .semibold)) }
                                 .buttonStyle(.plain).foregroundStyle(.secondary).disabled(workspace.executing)
                         }.padding(.horizontal, 12).padding(.vertical, 10)
                             .background(workspace.activeID == doc.id ? Color(nsColor: .textBackgroundColor) : .clear, in: RoundedRectangle(cornerRadius: 7))
@@ -180,7 +158,7 @@ import StudioCore
                 Spacer()
                 if !workspace.active.response.success { Label("Falha na execução", systemImage: "exclamationmark.circle.fill").font(.caption).foregroundStyle(.red) }
                 if workspace.resultTab == "results", let table = currentTable {
-                    Button { workspace.export(table) } label: { Label("CSV", systemImage: "square.and.arrow.up") }.buttonStyle(.borderless)
+                    Button { Task { await workspace.export(table) } } label: { Label("CSV", systemImage: "square.and.arrow.up") }.buttonStyle(.borderless)
                 }
             }.padding(10).background(.bar)
             Divider()

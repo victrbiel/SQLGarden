@@ -46,6 +46,12 @@ class BridgeTests(unittest.TestCase):
         row = result['sets'][0]['rows'][0]
         self.assertEqual(row, ['ação 🎓 "aspas"\nbarra\\tab\t', None, '', 'NULL'])
 
+    def test_zero_row_dml_keeps_following_results(self):
+        result = self.execute('ZERO_FIRST')
+        self.assertTrue(result['success'])
+        self.assertEqual(len(result['sets']), 1)
+        self.assertIn('ação', result['sets'][0]['rows'][0][0])
+
     def test_multiple_results_dml_and_print(self):
         result = self.execute('MULTI')
         self.assertEqual(len(result['sets']), 3)

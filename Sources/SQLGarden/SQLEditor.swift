@@ -47,7 +47,7 @@ struct SQLEditor: NSViewRepresentable {
             let location = min(selection.location, length)
             editor.setSelectedRange(NSRange(location: location, length: min(selection.length, length - location)))
             coordinator.updating = false; coordinator.highlight()
-        } else if !editor.string.utf8.elementsEqual(text.utf8) {
+        } else if !editor.hasMarkedText(), !editor.string.utf8.elementsEqual(text.utf8) {
             coordinator.updating = true; editor.string = text; coordinator.updating = false
             coordinator.highlight()
         }
@@ -60,23 +60,21 @@ struct SQLEditor: NSViewRepresentable {
         var updating = false
         init(_ parent: SQLEditor) { self.parent = parent }
         func textDidChange(_ notification: Notification) {
-            guard !updating, let editor else { return }
+            guard !updating, let editor, !editor.hasMarkedText() else { return }
             parent.text = editor.string; parent.selection = editor.selectedRange()
             highlight()
         }
         func textViewDidChangeSelection(_ notification: Notification) {
-            guard !updating, let editor else { return }
+            guard !updating, let editor, !editor.hasMarkedText() else { return }
             parent.selection = editor.selectedRange()
         }
         func highlight() {
-            guard let editor, let storage = editor.textStorage else { return }
+            guard let editor, !editor.hasMarkedText(), let layout = editor.layoutManager else { return }
             ruler?.updateLines()
             let source = editor.string
             let range = NSRange(location: 0, length: (source as NSString).length)
             updating = true; defer { updating = false }
-            storage.beginEditing(); defer { storage.endEditing() }
-            storage.addAttributes([.foregroundColor: NSColor.labelColor,
-                                   .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)], range: range)
+            layout.addTemporaryAttribute(.foregroundColor, value: NSColor.labelColor, forCharacterRange: range)
             // Keep long scripts editable. Parsing execution is independent of
             // this intentionally lightweight visual highlighter.
             guard range.length < 200_000 else { return }
@@ -90,7 +88,7 @@ struct SQLEditor: NSViewRepresentable {
                 for match in regex.matches(in: source, range: range) {
                     let fragment = (source as NSString).substring(with: match.range)
                     let actual: NSColor = fragment.hasPrefix("--") || fragment.hasPrefix("/*") ? .secondaryLabelColor : color
-                    storage.addAttribute(.foregroundColor, value: actual, range: match.range)
+                    layout.addTemporaryAttribute(.foregroundColor, value: actual, forCharacterRange: match.range)
                 }
             }
         }

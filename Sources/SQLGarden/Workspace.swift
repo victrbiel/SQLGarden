@@ -30,7 +30,9 @@ final class Workspace: ObservableObject {
         didSet { if oldValue.credentialKey != profile.credentialKey { credentialChanged() } }
     }
     @Published var password = ""
-    @Published var rememberPassword = true
+    @Published var rememberPassword = false { didSet { defaults.set(rememberPassword, forKey: "rememberPassword") } }
+    @Published var sessionNotice: String?
+    @Published var fileDialogOpen = false
     @Published var loadingPassword = false
     @Published var passwordNotice: String?
     private var passwordRequest: UUID?
@@ -74,6 +76,7 @@ final class Workspace: ObservableObject {
          passwordReader: @escaping @Sendable (String) async throws -> String? = { try await PasswordStore.read($0) }) {
         self.passwordReader = passwordReader
         self.defaults = defaults
+        self.rememberPassword = defaults.bool(forKey: "rememberPassword")
         let root = storageDirectory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(Bundle.main.bundleIdentifier ?? "app.sqlgarden.mac", isDirectory: true)
         storage = WorkspaceStorage(directory: root)
@@ -169,7 +172,7 @@ final class Workspace: ObservableObject {
                   let count = row[1].flatMap(Int.init), let state = row[2].flatMap(Int.init) else {
                 throw StudioError.message("Estado da sessão indisponível.")
             }
-            sessionID = row[0]; transactionCount = count; transactionState = state; sessionCheckedAt = Date()
+            sessionID = row[0]; transactionCount = count; transactionState = state; sessionCheckedAt = Date(); sessionNotice = nil
             if let name = row[3] { database = name }
         } catch { invalidateSessionState(); record(.sessionStateUnavailable); self.error = "Não foi possível confirmar o estado da sessão." }
     }
@@ -307,9 +310,14 @@ final class Workspace: ObservableObject {
         let ns = doc.sql as NSString
         let range = doc.selection
         let validSelection = range.location >= 0 && range.length > 0 && range.location <= ns.length && range.length <= ns.length - range.location
+        if range.length > 0 && !validSelection {
+            error = "A seleção do editor ficou inválida. Selecione novamente antes de executar."
+            return
+        }
         let sql = validSelection ? ns.substring(with: range) : doc.sql
         guard !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         executing = true
+        sessionNotice = nil
         let start = Date()
         let executedServer = profile.host + ":" + String(profile.port)
         let executedDatabase = database
@@ -326,7 +334,8 @@ final class Workspace: ObservableObject {
             record(outcome == .success ? .querySucceeded : outcome == .canceled ? .queryCanceled : .queryFailed, message: response.messages)
             appendHistory(sql: sql, server: executedServer, database: executedDatabase, start: start, outcome: outcome)
             resultTab = response.tables.isEmpty || !response.success ? "messages" : "results"
-            if let current = await client.currentDatabase(), current != database {
+            if !response.success { await handleExecutionFailure(response.messages) }
+            if connected, let current = await client.currentDatabase(), current != database {
                 database = current
                 if !databases.contains(current) { databases.append(current) }
                 await loadObjects()
@@ -339,6 +348,7 @@ final class Workspace: ObservableObject {
                 documents[i].elapsed = Date().timeIntervalSince(start)
             }
             resultTab = "messages"; self.error = error.localizedDescription
+            await handleExecutionFailure(error.localizedDescription)
         }
     }
     func cancel() {
@@ -350,25 +360,25 @@ final class Workspace: ObservableObject {
         let doc = QueryDocument(title: title ?? "Consulta \(documents.count + 1)", sql: sql)
         documents.append(doc); activeID = doc.id
     }
-    func closeQuery(_ id: UUID) {
+    func closeQuery(_ id: UUID) async {
         guard !executing, let i = documents.firstIndex(where: { $0.id == id }) else { return }
         if documents[i].dirty {
             let alert = NSAlert()
             alert.messageText = "Salvar alterações em \(documents[i].title)?"
             alert.informativeText = "A consulta ainda não foi salva."
             alert.addButton(withTitle: "Salvar"); alert.addButton(withTitle: "Cancelar"); alert.addButton(withTitle: "Descartar")
-            let response = alert.runModal()
-            if response == .alertSecondButtonReturn { return }
-            if response == .alertFirstButtonReturn { activeID = id; guard saveQuery() else { return } }
+            let response = await presentAlert(alert)
+            guard response == .alertFirstButtonReturn || response == .alertThirdButtonReturn else { return }
+            if response == .alertFirstButtonReturn { activeID = id; guard await saveQuery() else { return } }
         }
         documents.removeAll { $0.id == id }
         if documents.isEmpty { newQuery() }
         else if activeID == id { activeID = documents[min(i, documents.count - 1)].id }
         saveWorkspace()
     }
-    func openQuery() {
+    func openQuery() async {
         let panel = NSOpenPanel(); panel.allowedContentTypes = [.sqlText, .plainText]; panel.allowsMultipleSelection = true
-        guard panel.runModal() == .OK else { return }
+        guard await presentFilePanel(panel) == .OK else { return }
         for url in panel.urls {
             do {
                 let text = try String(contentsOf: url, encoding: .utf8)
@@ -377,14 +387,15 @@ final class Workspace: ObservableObject {
             } catch { self.error = "Não foi possível abrir \(url.lastPathComponent) em UTF-8: \(error.localizedDescription)" }
         }
     }
-    @discardableResult func saveQuery() -> Bool {
+    @discardableResult func saveQuery() async -> Bool {
+        let id = activeID
         let index = activeIndex
         var url = documents[index].url
         if url == nil {
             let panel = NSSavePanel(); panel.allowedContentTypes = [.sqlText]; panel.nameFieldStringValue = active.title + ".sql"
-            guard panel.runModal() == .OK else { return false }; url = panel.url
+            guard await presentFilePanel(panel) == .OK else { return false }; url = panel.url
         }
-        guard let url else { return false }
+        guard let url, documents.indices.contains(index), documents[index].id == id else { return false }
         do {
             if FileManager.default.fileExists(atPath: url.path) {
                 // A failed read must not turn into permission to overwrite.
@@ -393,7 +404,7 @@ final class Workspace: ObservableObject {
                 let alert = NSAlert(); alert.messageText = "O arquivo mudou fora do SQLGarden."
                 alert.informativeText = "Substituir o arquivo pela versão desta aba? O rascunho local está preservado."
                 alert.addButton(withTitle: "Cancelar"); alert.addButton(withTitle: "Substituir")
-                guard alert.runModal() == .alertSecondButtonReturn else { return false }
+                guard await presentAlert(alert) == .alertSecondButtonReturn else { return false }
                 }
             }
             try documents[index].sql.write(to: url, atomically: true, encoding: .utf8)
@@ -401,6 +412,28 @@ final class Workspace: ObservableObject {
             saveWorkspace()
             return true
         } catch { self.error = error.localizedDescription; return false }
+    }
+    private func presentFilePanel(_ panel: NSSavePanel) async -> NSApplication.ModalResponse {
+        guard !fileDialogOpen, let window = NSApp.keyWindow ?? NSApp.mainWindow else { return .cancel }
+        fileDialogOpen = true
+        defer { fileDialogOpen = false }
+        return await withCheckedContinuation { continuation in
+            panel.beginSheetModal(for: window) { continuation.resume(returning: $0) }
+        }
+    }
+    private func presentAlert(_ alert: NSAlert) async -> NSApplication.ModalResponse {
+        guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return .abort }
+        return await withCheckedContinuation { continuation in
+            alert.beginSheetModal(for: window) { continuation.resume(returning: $0) }
+        }
+    }
+    func handleExecutionFailure(_ message: String) async {
+        if DiagnosticSQLState.extract(from: message).contains(where: { [.transport, .connectionClosed].contains($0) }) {
+            await disconnect()
+            sessionNotice = "Conexão perdida. Reconecte manualmente; comandos não serão repetidos."
+        } else {
+            sessionNotice = "A execução foi interrompida. Pode haver transação aberta: verifique a sessão antes de continuar. Cancelar não executa ROLLBACK."
+        }
     }
     func showObject(_ object: DatabaseObject) {
         if object.kind == "U" || object.kind == "V" {
@@ -423,9 +456,9 @@ final class Workspace: ObservableObject {
             ORDER BY c.column_id;
             """, title: "Colunas · \(object.name)")
     }
-    func export(_ table: ResultSet) {
+    func export(_ table: ResultSet) async {
         let panel = NSSavePanel(); panel.allowedContentTypes = [.commaSeparatedText]; panel.nameFieldStringValue = "resultado.csv"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard await presentFilePanel(panel) == .OK, let url = panel.url else { return }
         do { try SQLText.csv(table).write(to: url, atomically: true, encoding: .utf8) }
         catch { self.error = error.localizedDescription }
     }
