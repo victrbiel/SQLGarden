@@ -47,7 +47,7 @@ struct SQLEditor: NSViewRepresentable {
             let location = min(selection.location, length)
             editor.setSelectedRange(NSRange(location: location, length: min(selection.length, length - location)))
             coordinator.updating = false; coordinator.highlight()
-        } else if editor.string != text {
+        } else if !editor.string.utf8.elementsEqual(text.utf8) {
             coordinator.updating = true; editor.string = text; coordinator.updating = false
             coordinator.highlight()
         }

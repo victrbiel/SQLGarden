@@ -8,16 +8,41 @@ enum PasswordStore {
         [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
          kSecAttrAccount as String: account]
     }
-    static func read(_ account: String) -> String? {
+    private static func perform<T: Sendable>(_ work: @escaping @Sendable () throws -> T) async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do { continuation.resume(returning: try work()) }
+                catch { continuation.resume(throwing: error) }
+            }
+        }
+    }
+    static func read(_ account: String) async throws -> String? {
+        try await perform { try readSynchronously(account) }
+    }
+    static func save(_ password: String, account: String) async throws {
+        try await perform { try saveSynchronously(password, account: account) }
+    }
+    static func delete(_ account: String) async throws {
+        try await perform {
+            let status = SecItemDelete(query(account) as CFDictionary)
+            guard status == errSecSuccess || status == errSecItemNotFound else {
+                throw StudioError.message("Não foi possível remover a senha do Chaves (\(status)).")
+            }
+        }
+    }
+    private static func readSynchronously(_ account: String) throws -> String? {
         var q = query(account)
         q[kSecReturnData as String] = true
         q[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?
-        guard SecItemCopyMatching(q as CFDictionary, &result) == errSecSuccess,
-              let data = result as? Data else { return nil }
+        let status = SecItemCopyMatching(q as CFDictionary, &result)
+        if status == errSecItemNotFound { return nil }
+        guard status == errSecSuccess, let data = result as? Data else {
+            throw StudioError.message("O Chaves não liberou a senha (\(status)). Digite-a manualmente.")
+        }
         return String(data: data, encoding: .utf8)
     }
-    static func save(_ password: String, account: String) throws {
+    private static func saveSynchronously(_ password: String, account: String) throws {
         let q = query(account)
         let values = [kSecValueData as String: Data(password.utf8)]
         let status = SecItemUpdate(q as CFDictionary, values as CFDictionary)
@@ -29,5 +54,4 @@ enum PasswordStore {
             guard create == errSecSuccess else { throw StudioError.message("Não foi possível salvar a senha no Chaves (\(create)).") }
         } else if status != errSecSuccess { throw StudioError.message("Não foi possível atualizar a senha no Chaves (\(status)).") }
     }
-    static func delete(_ account: String) { SecItemDelete(query(account) as CFDictionary) }
 }

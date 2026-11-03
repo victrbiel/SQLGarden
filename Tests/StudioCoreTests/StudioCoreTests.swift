@@ -2,6 +2,40 @@ import XCTest
 @testable import StudioCore
 
 final class StudioCoreTests: XCTestCase {
+    func testOriginalLineEndingsAndOffsetsArePreserved() throws {
+        for ending in ["\r\n", "\r", "\n"] {
+            let first = "\(ending) SELECT N'A\(ending)B';\(ending)"
+            let batches = try BatchParser.split(first + "GO" + ending + "SELECT 2;")
+            XCTAssertEqual(batches.count, 2)
+            XCTAssertEqual(batches[0].sql, first)
+            XCTAssertEqual(batches[1].startLine, 5)
+        }
+    }
+    func testCombiningScalarsDoNotHideSQLDelimiters() throws {
+        for (open, close) in [("'", "'"), ("[", "]"), ("\"", "\"")] {
+            let text = "SELECT " + open + "\u{301}inicio\nGO\nfim" + close + ";\nGO\nSELECT 2;"
+            let batches = try BatchParser.split(text)
+            XCTAssertEqual(batches.count, 2, text)
+            XCTAssertTrue(batches[0].sql.contains("\nGO\n"))
+        }
+    }
+    func testNULInAnyBatchIsRejectedBeforeExecution() {
+        for text in ["SELECT 1;\0 SELECT 2;", "INSERT t VALUES(1);\nGO\n--\0", "SELECT N'\0';"] {
+            XCTAssertThrowsError(try BatchParser.split(text))
+        }
+    }
+    func testConnectionRejectsNULInEveryODBCField() {
+        for index in 0..<4 {
+            var profile = ConnectionProfile(); var password = "test"
+            switch index {
+            case 0: profile.host = "localhost\0outro"
+            case 1: profile.username = "sa\0outro"
+            case 2: profile.database = "master\0outro"
+            default: password = "test\0outro"
+            }
+            XCTAssertThrowsError(try profile.connectionString(password: password))
+        }
+    }
     func testGOSeparatesProcedureBatchesAndRepetitions() throws {
         let batches = try BatchParser.split("SELECT 1;\r\nGO\r\nCREATE PROCEDURE p AS SELECT 2;\r\nGO 2 -- repetir\r\nEXEC p;")
         XCTAssertEqual(batches.count, 3)

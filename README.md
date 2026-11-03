@@ -6,7 +6,16 @@ Interface nativa SwiftUI/AppKit para trabalhar com Microsoft SQL Server Express:
 editor T-SQL, catálogo, GO, sessão persistente, resultados múltiplos, mensagens,
 CSV e credenciais opcionais no Chaves. Sem Python integrado.
 
-## Novidades 0.3.0
+## Correções 0.3.1
+
+- SQL original preservado, incluindo CRLF/CR e marcas Unicode junto a aspas.
+- NUL na entrada é rejeitado antes de qualquer lote; resultados com NUL são preservados.
+- Campos ODBC não aceitam NUL; avisos do driver não acrescentam bytes a binários.
+- Chaves assíncrono, estado de espera, digitação manual e proteção contra respostas atrasadas.
+- Salvamento protege arquivos externos ilegíveis e reconhece diferenças de bytes Unicode.
+- Respostas antigas do explorador não repovoam uma conexão encerrada.
+
+## Recursos da 0.3.0 mantidos
 
 - Recuperação automática de abas e rascunhos locais, com escrita atômica e backup.
 - Histórico pesquisável de SQL, contexto e duração; pode ser apagado/desativado.
@@ -52,6 +61,9 @@ executados separadamente com `swift test --filter StudioCoreTests`.
 e cria uma base nova `SQLGarden_Validacao_…`. Nunca informe senha no comando ou
 histórico. `SQLGARDEN_TEST_DATABASE` permite escolher um nome nesse prefixo.
 O teste aborta se a base já existir e preserva seus objetos ao concluir.
+`bash scripts/test-regressions.sh` usa as mesmas variáveis de conexão, trabalha
+somente com tabelas temporárias e repete os limites e as regressões de integridade.
+Nunca use um servidor pessoal ou de produção nessas baterias.
 O cenário `--disconnect-check` exige o nome explícito de uma base de validação
 criada pelo teste principal; encerra somente a sessão que o próprio teste iniciou.
 

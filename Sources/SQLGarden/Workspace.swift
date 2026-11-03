@@ -11,7 +11,7 @@ struct QueryDocument: Identifiable {
     var savedText: String?
     var response = SQLResponse()
     var elapsed: TimeInterval = 0
-    var dirty: Bool { savedText.map { sql != $0 } ?? !sql.isEmpty }
+    var dirty: Bool { savedText.map { !sql.utf8.elementsEqual($0.utf8) } ?? !sql.isEmpty }
 }
 struct DatabaseObject: Identifiable {
     let schema: String
@@ -26,9 +26,16 @@ struct DatabaseObject: Identifiable {
 
 @MainActor
 final class Workspace: ObservableObject {
-    @Published var profile: ConnectionProfile
+    @Published var profile: ConnectionProfile {
+        didSet { if oldValue.credentialKey != profile.credentialKey { credentialChanged() } }
+    }
     @Published var password = ""
     @Published var rememberPassword = true
+    @Published var loadingPassword = false
+    @Published var passwordNotice: String?
+    private var passwordRequest: UUID?
+    private let passwordReader: @Sendable (String) async throws -> String?
+    private var connectionRequest = UUID()
     @Published var connected = false
     @Published var connecting = false
     @Published var executing = false
@@ -63,7 +70,9 @@ final class Workspace: ObservableObject {
     private var metadataAvailable = false
     private var objectRequest = UUID()
 
-    init(storageDirectory: URL? = nil, defaults: UserDefaults = .standard) {
+    init(storageDirectory: URL? = nil, defaults: UserDefaults = .standard,
+         passwordReader: @escaping @Sendable (String) async throws -> String? = { try await PasswordStore.read($0) }) {
+        self.passwordReader = passwordReader
         self.defaults = defaults
         let root = storageDirectory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(Bundle.main.bundleIdentifier ?? "app.sqlgarden.mac", isDirectory: true)
@@ -178,33 +187,65 @@ final class Workspace: ObservableObject {
             if let i = self.documents.firstIndex(where: { $0.id == id }) { self.documents[i].selection = value }
         })
     }
-    func loadPassword() { password = PasswordStore.read(profile.credentialKey) ?? "" }
+    func useManualPassword() {
+        passwordRequest = nil; loadingPassword = false
+        passwordNotice = "Digite a senha manualmente. Uma resposta pendente do Chaves não substituirá o que você escrever."
+    }
+    func credentialChanged() {
+        passwordRequest = nil; loadingPassword = false; password = ""; passwordNotice = nil
+    }
+    func loadPassword() async {
+        guard !connected, !connecting, !loadingPassword, password.isEmpty else { return }
+        let account = profile.credentialKey
+        let request = UUID(); passwordRequest = request; loadingPassword = true; passwordNotice = nil
+        defer { if passwordRequest == request { loadingPassword = false; passwordRequest = nil } }
+        do {
+            let stored = try await passwordReader(account)
+            guard passwordRequest == request, profile.credentialKey == account, password.isEmpty,
+                  !Task.isCancelled, !connected, !connecting else { return }
+            password = stored ?? ""
+        } catch {
+            guard passwordRequest == request, profile.credentialKey == account else { return }
+            passwordNotice = "Não foi possível ler a senha do Chaves. Você pode digitá-la manualmente."
+        }
+    }
     func persistProfile() {
         if let data = try? JSONEncoder().encode(profile) { defaults.set(data, forKey: "connection") }
     }
     func connect() async {
-        guard !connecting, !executing else { return }
+        guard !connecting, !executing, !loadingPassword else { return }
+        passwordRequest = nil
+        let connectionProfile = profile, connectionPassword = password, savePassword = rememberPassword
         connecting = true
         defer { connecting = false }
-        await disconnect()
+        let attempt = UUID(); connectionRequest = attempt
+        await closeConnection()
+        guard connectionRequest == attempt else { return }
         do {
-            try await client.connect(profile, password: password)
-            connected = true; database = profile.database; record(.connectionSucceeded)
+            try await client.connect(connectionProfile, password: connectionPassword)
+            guard connectionRequest == attempt else { return }
+            connected = true; database = connectionProfile.database; record(.connectionSucceeded)
             persistProfile()
-            if rememberPassword {
-                do { try PasswordStore.save(password, account: profile.credentialKey) }
-                catch { self.error = error.localizedDescription }
-            } else { PasswordStore.delete(profile.credentialKey) }
+            do {
+                if savePassword { try await PasswordStore.save(connectionPassword, account: connectionProfile.credentialKey) }
+                else { try await PasswordStore.delete(connectionProfile.credentialKey) }
+            } catch { if connectionRequest == attempt { self.error = error.localizedDescription } }
+            guard connectionRequest == attempt else { return }
             connectionSheet = false
             do {
-                try await metadata.connect(profile, password: password)
+                try await metadata.connect(connectionProfile, password: connectionPassword)
+                guard connectionRequest == attempt else { return }
                 metadataAvailable = true
                 await refreshExplorer()
-            } catch { record(.metadataFailed); self.error = "Conectado ao editor. O explorador não pôde conectar: \(error.localizedDescription)" }
+            } catch { guard connectionRequest == attempt else { return }; record(.metadataFailed); self.error = "Conectado ao editor. O explorador não pôde conectar: \(error.localizedDescription)" }
             password = ""
-        } catch { record(.connectionFailed, message: error.localizedDescription); self.error = error.localizedDescription }
+        } catch { guard connectionRequest == attempt else { return }; record(.connectionFailed, message: error.localizedDescription); self.error = error.localizedDescription }
     }
     func disconnect() async {
+        connectionRequest = UUID()
+        await closeConnection()
+    }
+    private func closeConnection() async {
         if connected { record(.disconnected) }
         invalidateSessionState()
         objectRequest = UUID()
@@ -214,13 +255,15 @@ final class Workspace: ObservableObject {
     }
     func refreshExplorer() async {
         guard metadataAvailable else { return }
+        let connection = connectionRequest
         do {
             let result = try await metadata.execute("SELECT name FROM sys.databases WHERE state = 0 AND HAS_DBACCESS(name) = 1 ORDER BY name;", maxRows: 10000)
+            guard connectionRequest == connection, metadataAvailable else { return }
             guard result.success else { throw StudioError.message(result.messages) }
             databases = result.tables.first?.rows.compactMap { $0.first.flatMap { $0 } } ?? []
             if !databases.contains(database) { databases.append(database) }
             await loadObjects()
-        } catch { self.error = error.localizedDescription }
+        } catch { if connectionRequest == connection, metadataAvailable { self.error = error.localizedDescription } }
     }
     func loadObjects() async {
         guard metadataAvailable else { return }
@@ -263,7 +306,8 @@ final class Workspace: ObservableObject {
         let doc = active
         let ns = doc.sql as NSString
         let range = doc.selection
-        let sql = range.length > 0 && NSMaxRange(range) <= ns.length ? ns.substring(with: range) : doc.sql
+        let validSelection = range.location >= 0 && range.length > 0 && range.location <= ns.length && range.length <= ns.length - range.location
+        let sql = validSelection ? ns.substring(with: range) : doc.sql
         guard !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         executing = true
         let start = Date()
@@ -342,12 +386,15 @@ final class Workspace: ObservableObject {
         }
         guard let url else { return false }
         do {
-            if FileManager.default.fileExists(atPath: url.path), let saved = documents[index].savedText,
-               let disk = try? String(contentsOf: url, encoding: .utf8), disk != saved {
+            if FileManager.default.fileExists(atPath: url.path) {
+                // A failed read must not turn into permission to overwrite.
+                let disk = try String(contentsOf: url, encoding: .utf8)
+                if documents[index].savedText.map({ !disk.utf8.elementsEqual($0.utf8) }) ?? true {
                 let alert = NSAlert(); alert.messageText = "O arquivo mudou fora do SQLGarden."
                 alert.informativeText = "Substituir o arquivo pela versão desta aba? O rascunho local está preservado."
                 alert.addButton(withTitle: "Cancelar"); alert.addButton(withTitle: "Substituir")
                 guard alert.runModal() == .alertSecondButtonReturn else { return false }
+                }
             }
             try documents[index].sql.write(to: url, atomically: true, encoding: .utf8)
             documents[index].url = url; documents[index].title = url.lastPathComponent; documents[index].savedText = documents[index].sql

@@ -2,6 +2,11 @@ import AppKit
 import SwiftUI
 import StudioCore
 
+private actor CredentialGate {
+    private var continuation: CheckedContinuation<String?, Never>?
+    func read() async -> String? { await withCheckedContinuation { continuation = $0 } }
+    func resolve() { continuation?.resume(returning: "resposta-sintetica"); continuation = nil }
+}
 @main struct UIValidation {
     @MainActor static func render<V: View>(_ view: V, width: CGFloat, height: CGFloat, name: String) async throws {
         let host = NSHostingView(rootView: view)
@@ -54,6 +59,55 @@ import StudioCore
             let preserved = try Data(contentsOf: broken.appendingPathComponent("workspace-v1.json"))
             try check(preserved == original, "falha de recuperação preserva arquivos ilegíveis mesmo ao desativar histórico")
             let workspace = Workspace(storageDirectory: root, defaults: defaults)
+            var unicodeEdit = QueryDocument(title: "normalização", sql: "SELECT N'e\u{301}';")
+            unicodeEdit.savedText = "SELECT N'é';"
+            try check(unicodeEdit.dirty, "edição com Unicode visualmente igual mas bytes diferentes exige salvamento")
+            let fileURL = root.appendingPathComponent("arquivo-alterado.sql")
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            let invalidUTF8 = Data([0xff, 0xfe, 0x41])
+            try invalidUTF8.write(to: fileURL)
+            workspace.documents[0].url = fileURL; workspace.documents[0].savedText = "SELECT 1;"
+            workspace.documents[0].sql = "SELECT 2;"
+            let savedInvalidFile = workspace.saveQuery()
+            let diskAfterSave = try Data(contentsOf: fileURL)
+            try check(!savedInvalidFile && diskAfterSave == invalidUTF8 && workspace.error != nil,
+                      "arquivo alterado para conteúdo ilegível não é sobrescrito silenciosamente")
+            workspace.error = nil
+            let credentialGate = CredentialGate()
+            let delayed = Workspace(storageDirectory: root.appendingPathComponent("keychain"), defaults: defaults,
+                passwordReader: { _ in await credentialGate.read() })
+            let readTask = Task { await delayed.loadPassword() }
+            try await Task.sleep(nanoseconds: 40_000_000)
+            try check(delayed.loadingPassword, "espera de credencial permite executar tarefas na interface")
+            try await render(ConnectionView().environmentObject(delayed), width: 540, height: 660, name: "keychain-wait")
+            delayed.useManualPassword(); delayed.password = "entrada-sintetica"
+            await credentialGate.resolve(); await readTask.value
+            try check(delayed.password == "entrada-sintetica" && !delayed.loadingPassword,
+                      "digitação manual invalida resposta tardia do Chaves")
+            delayed.password = ""
+            let changedTask = Task { await delayed.loadPassword() }
+            try await Task.sleep(nanoseconds: 40_000_000)
+            delayed.profile.username = "outro-perfil-qa"
+            await credentialGate.resolve(); await changedTask.value
+            try check(delayed.password.isEmpty && !delayed.loadingPassword,
+                      "troca de usuário invalida leitura anterior e limpa credencial")
+            let credentialAccount = "SQLGarden_Validacao_" + UUID().uuidString
+            do {
+                try await PasswordStore.save("conteudo-sintetico-qa", account: credentialAccount)
+                let savedCredential = try await PasswordStore.read(credentialAccount)
+                try await PasswordStore.delete(credentialAccount)
+                let removedCredential = try await PasswordStore.read(credentialAccount)
+                try check(savedCredential == "conteudo-sintetico-qa" && removedCredential == nil,
+                          "Chaves real salva, lê e remove somente a entrada de QA exclusiva")
+            } catch {
+                try? await PasswordStore.delete(credentialAccount)
+                throw error
+            }
+            let denied = Workspace(storageDirectory: root.appendingPathComponent("keychain-denied"), defaults: defaults,
+                passwordReader: { _ in throw StudioError.message("negação sintética") })
+            await denied.loadPassword()
+            try check(!denied.loadingPassword && denied.password.isEmpty && denied.passwordNotice != nil,
+                      "negação de leitura libera digitação manual com aviso")
             workspace.newQuery(sql: "SELECT N'ação 🎓';\n", title: "Rascunho")
             let docID = workspace.activeID
             workspace.sqlBinding.wrappedValue += "-- edição recuperável"
@@ -79,7 +133,7 @@ import StudioCore
             let ruler = LineNumberRuler(scroll: scroll, editor: editor); scroll.verticalRulerView = ruler
             ruler.updateLines()
             try check(ruler.ruleThickness >= 52, "régua de números de linha criada no AppKit")
-            let report = SupportReport.compose(kind: "Problema", description: "Exemplo de QA", steps: "Abrir", diagnostic: SupportReport.diagnostic(version: "0.3.0", system: "macOS", architecture: "arm64", missing: RuntimeDependencies.missing, events: workspace.diagnosticEvents))
+            let report = SupportReport.compose(kind: "Problema", description: "Exemplo de QA", steps: "Abrir", diagnostic: SupportReport.diagnostic(version: "0.3.1", system: "macOS", architecture: "arm64", missing: RuntimeDependencies.missing, events: workspace.diagnosticEvents))
             try await render(FeedbackView().environmentObject(workspace), width: 760, height: 620, name: "feedback")
             try check(!report.contains("edição recuperável") && !report.contains("SELECT N'"), "diagnóstico não absorve SQL ou rascunhos")
             if let password = ProcessInfo.processInfo.environment["SQLGARDEN_INTEGRATION_PASSWORD"],
@@ -88,6 +142,21 @@ import StudioCore
                 workspace.password = password; workspace.rememberPassword = false
                 await workspace.connect()
                 try check(workspace.connected && workspace.error == nil, "Workspace conecta a servidor de QA isolado")
+                workspace.selectionBinding.wrappedValue = NSRange()
+                workspace.sqlBinding.wrappedValue = "CREATE TABLE #SGNUL(n int);"
+                await workspace.execute()
+                workspace.sqlBinding.wrappedValue = "INSERT #SGNUL VALUES(1);\nGO\n--\0"
+                await workspace.execute()
+                let rejectedNUL = !workspace.active.response.success
+                workspace.error = nil
+                workspace.sqlBinding.wrappedValue = "SELECT COUNT(*) FROM #SGNUL;"
+                await workspace.execute()
+                try check(rejectedNUL && workspace.active.response.tables.first?.rows.first?[0] == "0",
+                          "NUL em lote posterior bloqueia todo o documento antes de qualquer INSERT")
+                workspace.sqlBinding.wrappedValue = "SELECT N'A'+NCHAR(0)+N'B', DATALENGTH(N'A\r\nB');"
+                await workspace.execute()
+                try check(workspace.active.response.tables.first?.rows.first == ["A\0B", "8"],
+                          "Workspace preserva NUL em resultado e CRLF no SQL real")
                 workspace.sqlBinding.wrappedValue = "SELECT N'ação 🎓' AS Texto, CAST(NULL AS INT) AS Nulo; SELECT N'outro' AS Outro;"
                 workspace.selectionBinding.wrappedValue = NSRange()
                 await workspace.execute()
@@ -127,8 +196,13 @@ import StudioCore
                 workspace.sqlBinding.wrappedValue = "SELECT 123;"; await workspace.execute()
                 let noHistory = Workspace(storageDirectory: root, defaults: defaults)
                 try check(workspace.history.isEmpty && noHistory.history.isEmpty && !noHistory.historyEnabled, "desativar histórico apaga ambas as gerações e impede novas gravações")
-                try check(!workspace.diagnosticEvents.isEmpty && !SupportReport.diagnostic(version: "0.3.0", system: "macOS", architecture: "arm64", missing: [], events: workspace.diagnosticEvents).contains("erro privado de QA"), "eventos de falhas reais excluem mensagens brutas do servidor")
+                try check(!workspace.diagnosticEvents.isEmpty && !SupportReport.diagnostic(version: "0.3.1", system: "macOS", architecture: "arm64", missing: [], events: workspace.diagnosticEvents).contains("erro privado de QA"), "eventos de falhas reais excluem mensagens brutas do servidor")
+                let explorerTask = Task { await workspace.refreshExplorer() }
+                await Task.yield()
                 await workspace.disconnect()
+                await explorerTask.value
+                try check(!workspace.connected && workspace.databases.isEmpty && workspace.objects.isEmpty,
+                          "resposta pendente do explorador não repovoa conexão encerrada")
             }
             print("Validação de interface/modelo concluída: \(passed) verificações. Nenhum e-mail enviado.")
         } catch { print("FAIL: \(error.localizedDescription)"); exit(1) }

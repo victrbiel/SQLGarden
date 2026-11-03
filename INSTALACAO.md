@@ -1,4 +1,4 @@
-# SQLGarden 0.3.0 — instalação e uso no Mac
+# SQLGarden 0.3.1 — instalação e uso no Mac
 
 **Desenvolvido por Victor · Código aberto, licença MIT.**
 
@@ -8,12 +8,12 @@ O aplicativo não inclui Python e não executa código Python.
 
 ## 1. O que vem nesta entrega
 
-- `SQLGarden-0.3.0-Universal.dmg`: imagem de instalação, com app e atalho para Aplicativos.
+- `SQLGarden-0.3.1-Universal.dmg`: imagem de instalação, com app e atalho para Aplicativos.
 - `INSTALACAO.md`: este guia.
 - `SQLGarden-fonte/`: projeto completo, artes originais, licença, testes e scripts de build.
 - `SHA256SUMS.txt`: soma de verificação dos arquivos da entrega.
 
-O DMG também contém **Instalar Dependencias.command** e
+O ZIP completo também contém **Instalar Dependencias.command** e
 **Criar SQL Server Express.command**. São scripts legíveis de Terminal:
 o primeiro instala apenas as bibliotecas do cliente; o segundo é opcional e
 cria um servidor local somente após você confirmar. Nenhum contém uma senha.
@@ -30,14 +30,15 @@ cria um servidor local somente após você confirmar. Nenhum contém uma senha.
 O Homebrew pode precisar das Command Line Tools da Apple. Apenas quem quiser
 compilar o código-fonte precisa das ferramentas Swift/Xcode correspondentes.
 
-Esta versão foi executada e testada em Apple Silicon com macOS 27.0.1.
+Esta versão foi compilada e validada em Apple Silicon com macOS 27.0.1,
+com consultas reais pelo driver e componentes AppKit/SwiftUI.
 As duas arquiteturas foram compiladas; os limites exatos dos testes estão em
 `SQLGarden-fonte/docs/VALIDACAO_MAC.md`. Compilar para Intel/macOS 14 não comprova
 que o app foi executado fisicamente em todas essas combinações.
 
 ## 3. Instalar o aplicativo
 
-1. Extraia o ZIP e abra `SQLGarden-0.3.0-Universal.dmg`.
+1. Extraia o ZIP e abra `SQLGarden-0.3.1-Universal.dmg`.
 2. Arraste **SQLGarden.app** para **Aplicativos**. Se já usa o SQLGarden, salve
    suas consultas e encerre a versão anterior antes de substituir o app.
 3. Ejete a imagem DMG depois de copiar. Abra o app a partir de Aplicativos.
@@ -68,7 +69,7 @@ pelo repositório oficial e aceita a licença no próprio Mac.
 
 1. Se não tiver Homebrew, instale seguindo [brew.sh](https://brew.sh).
    O instalador oficial explica os comandos e poderá solicitar as ferramentas da Apple.
-2. Abra **Instalar Dependencias.command**, incluído no DMG. Também está disponível
+2. Abra **Instalar Dependencias.command**, incluído no ZIP completo. Também está disponível
    no menu **Help/Ajuda → Instalar dependências do SQL Server…** do app.
 3. Leia o que será instalado e a licença do driver. Digite `SIM` somente se concordar.
 4. Aguarde o Terminal terminar e mostrar **Pronto**. Reabra o SQLGarden.
@@ -114,7 +115,7 @@ Não apague containers, volumes ou bancos para corrigir uma falha de conexão.
 3. No Apple Silicon, o motor SQL Server é x64 e depende de emulação/tradução.
    Quando necessário, siga as opções de virtualização e emulação da sua versão
    do Docker. Não mude configurações de um ambiente que já funciona sem motivo.
-4. Abra **Criar SQL Server Express.command** incluído no DMG.
+4. Abra **Criar SQL Server Express.command** incluído no ZIP completo.
 5. Leia o resumo e a licença do SQL Server. Digite `SIM` somente se concordar.
 6. Crie e repita uma senha de pelo menos 12 caracteres, com maiúscula, minúscula,
    número e símbolo. Guarde-a: o instalador não imprime nem salva a senha em arquivo.
@@ -319,3 +320,19 @@ Docker e Homebrew mantêm seus próprios termos. Não há vínculo ou endosso Mi
 - [Virtualizadores do Docker Desktop](https://docs.docker.com/desktop/features/vmm/)
 - [Memória e configurações Docker](https://docs.docker.com/desktop/settings-and-maintenance/settings/)
 - [Homebrew](https://brew.sh)
+
+
+## Correções de integridade da 0.3.1
+
+Quebras de linha CRLF/CR dentro de strings são preservadas. NUL no documento
+é rejeitado antes de enviar qualquer lote; NUL em resultados continua no valor
+recebido, inclusive na cópia/CSV, embora seja um caractere invisível.
+
+Ao abrir Conectar, a leitura do Chaves ocorre em segundo plano. Enquanto espera,
+é possível escolher **Digitar manualmente**. Uma resposta atrasada não troca a
+senha digitada nem a credencial de outro perfil. O aviso de autorização do macOS
+continua sendo controlado pelo próprio sistema.
+
+Arquivos alterados fora do app só são sobrescritos após confirmação; se o conteúdo
+atual não puder ser lido em UTF-8, o salvamento é interrompido para preservar o
+arquivo externo. Mudanças Unicode com bytes diferentes também contam como edição.

@@ -106,7 +106,7 @@ import StudioCore
                 Button("Histórico de consultas…") { workspace.historySheet = true }.keyboardShortcut("h", modifiers: [.command, .shift])
                 Button("Verificar estado da sessão") { Task { await workspace.inspectSession() } }.disabled(!workspace.connected || workspace.executing)
                 Button("Atualizar explorador") { Task { await workspace.refreshExplorer() } }.disabled(!workspace.connected)
-                Button("Conectar…") { workspace.loadPassword(); workspace.connectionSheet = true }.disabled(workspace.connected || workspace.connecting || workspace.executing)
+                Button("Conectar…") { workspace.connectionSheet = true }.disabled(workspace.connected || workspace.connecting || workspace.executing)
             }
         }
     }

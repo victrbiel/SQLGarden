@@ -52,6 +52,16 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(result['sets'][1]['affectedRows'], 7)
         self.assertIn('Mensagem de teste', result['messages'])
 
+    def test_embedded_and_trailing_nul_are_preserved(self):
+        self.assertEqual(self.execute('NUL')['sets'][0]['rows'][0][0], 'A\0B\0')
+        expected = bytearray(b'x' * 10000)
+        for index in (0, 4094, 4095, 9999): expected[index] = 0
+        self.assertEqual(self.execute('NUL_LONG')['sets'][0]['rows'][0][0], expected.decode())
+
+    def test_binary_warning_does_not_invent_bytes(self):
+        result = self.execute('BINARY_WARN')
+        self.assertEqual(result['sets'][0]['rows'][0][0], '0x0001FF10')
+
     def test_streams_long_values(self):
         self.assertEqual(self.execute('LONG')['sets'][0]['rows'][0][0], 'x' * 10000)
 

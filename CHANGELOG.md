@@ -1,5 +1,20 @@
 # Histórico
 
+## 0.3.1 — 21/10/2026
+
+- Preserva CRLF/CR e linhas originais ao reconhecer GO.
+- Analisa delimitadores por escalares Unicode, inclusive junto a marcas combinantes.
+- Rejeita NUL no documento inteiro antes de enviar qualquer lote e nos campos ODBC.
+- Preserva NUL interno/final em resultados e entre blocos de leitura JSON/ODBC.
+- Usa comprimento real em binários mesmo com SQL_SUCCESS_WITH_INFO.
+- Move leitura, gravação e remoção do Chaves para fora da thread da interface.
+- Expõe espera/digitação manual e invalida leituras duplicadas, antigas ou de outro perfil.
+- Não sobrescreve arquivo externo ilegível e reconhece diferenças de bytes Unicode.
+- Ignora respostas de metadados após desconectar e captura parâmetros da tentativa de conexão.
+- Corrige orientação dos scripts de instalação: ficam no ZIP completo.
+- Acrescenta regressões de integridade, Chaves e preservação de arquivos.
+
+
 ## 0.3.0 — 19/10/2026
 
 - Recuperação local de abas, rascunhos, seleção e aba ativa; backup de geração anterior.

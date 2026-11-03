@@ -32,6 +32,17 @@ import SwiftUI
                 Section("Autenticação SQL Server") {
                     TextField("Usuário", text: $workspace.profile.username)
                     SecureField("Senha", text: $workspace.password)
+                        .onChange(of: workspace.password) { _, _ in
+                            if workspace.loadingPassword { workspace.useManualPassword() }
+                        }
+                    if workspace.loadingPassword {
+                        HStack {
+                            ProgressView().controlSize(.small)
+                            Text("Aguardando autorização do Chaves…").font(.caption)
+                            Button("Digitar manualmente") { workspace.useManualPassword() }
+                        }
+                    }
+                    if let notice = workspace.passwordNotice { Text(notice).font(.caption).foregroundStyle(.secondary) }
                     Toggle("Salvar senha no Chaves do macOS", isOn: $workspace.rememberPassword)
                     Toggle("Confiar no certificado do servidor", isOn: $workspace.profile.trustCertificate)
                     Text("A conexão usa criptografia. Para seu Docker local com certificado próprio, mantenha a confiança ativada. Em servidores remotos com certificado válido, desative.")
@@ -55,11 +66,13 @@ import SwiftUI
                 if !workspace.connected {
                     if workspace.connecting { ProgressView().controlSize(.small) }
                     Button(workspace.connecting ? "Conectando…" : "Conectar") { Task { await workspace.connect() } }
-                        .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(workspace.connecting)
+                        .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(workspace.connecting || workspace.loadingPassword)
                 }
             }
         }.padding(24).frame(width: 540, height: 660)
             .interactiveDismissDisabled(workspace.connecting)
+            .task(id: workspace.profile.credentialKey) { await workspace.loadPassword() }
+            .onDisappear { workspace.useManualPassword() }
             .alert("Conexão", isPresented: Binding(get: { workspace.error != nil }, set: { if !$0 { workspace.error = nil } })) {
                 Button("OK") { workspace.error = nil }
             } message: { Text(workspace.error ?? "") }

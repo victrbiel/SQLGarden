@@ -145,3 +145,22 @@ macOS, arquitetura e dependências ausentes. A composição usa NSSharingService
 composeEmail com corpo e TXT idênticos à revisão. Nenhum SMTP/credencial de e-mail
 é incorporado. Arquivos TXT de composição ficam em diretórios temporários privados;
 a entrega depende do serviço de e-mail e não é confirmada pelo SQLGarden.
+
+
+## Correções 0.3.1
+
+O parser percorre escalares Unicode e preserva os terminadores de cada linha.
+A validação NUL é feita no documento completo antes de executar o primeiro lote.
+A ponte serializa células com comprimento explícito, escapando U+0000 em JSON;
+a leitura localiza o terminador final do bloco sem confundir NUL de conteúdo.
+Binários usam o indicador de comprimento, inclusive em avisos SQL_SUCCESS_WITH_INFO.
+
+Todas as operações Security/Chaves rodam em uma fila global fora do MainActor.
+A leitura recebe um identificador de requisição e conta; troca de perfil,
+digitação manual e fechamento invalidam respostas tardias. Leituras duplicadas
+são ignoradas durante a espera. O sistema continua responsável por autorização.
+Conexões e metadados também validam a tentativa antes de publicar resultados.
+
+Rascunhos e conflitos externos comparam UTF-8 byte a byte: igualdade canônica de
+String não significa que o arquivo SQL ficou igual. Falha de leitura do arquivo
+externo interrompe o salvamento, preservando seus bytes.

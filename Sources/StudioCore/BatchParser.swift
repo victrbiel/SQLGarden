@@ -10,12 +10,34 @@ public enum BatchParser {
         public let repetitions: Int
     }
     public static func split(_ text: String) throws -> [Batch] {
-        let text = text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+        guard !text.utf8.contains(0) else {
+            throw StudioError.message("O SQL contém o caractere NUL (U+0000). Remova-o antes de executar. Nenhum lote foi enviado ao servidor.")
+        }
+        // Scan scalar boundaries, never grapheme clusters: a combining mark can
+        // belong to an apostrophe Character, but cannot change SQL punctuation.
+        // Keep each original terminator, including CR and CRLF inside literals.
+        let scalars = text.unicodeScalars
+        var lines: [(String, String)] = []
+        var start = scalars.startIndex
+        var cursor = start
+        while cursor < scalars.endIndex {
+            let scalar = scalars[cursor]
+            if scalar == "\r" || scalar == "\n" {
+                let content = String(scalars[start..<cursor])
+                let endStart = cursor
+                scalars.formIndex(after: &cursor)
+                if scalar == "\r", cursor < scalars.endIndex, scalars[cursor] == "\n" { scalars.formIndex(after: &cursor) }
+                lines.append((content, String(scalars[endStart..<cursor])))
+                start = cursor
+            } else { scalars.formIndex(after: &cursor) }
+        }
+        lines.append((String(scalars[start..<scalars.endIndex]), ""))
         var state = State.normal
         var pending: [String] = []
         var output: [Batch] = []
         var startLine = 1
-        for (offset, line) in text.components(separatedBy: "\n").enumerated() {
+        for (offset, original) in lines.enumerated() {
+            let (line, terminator) = original
             let lineNumber = offset + 1
             if case .normal = state {
                 let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -29,18 +51,18 @@ public enum BatchParser {
                           (1...100).contains(repeatCount) else {
                         throw StudioError.message("Linha \(lineNumber): use GO ou GO seguido de um número entre 1 e 100.")
                     }
-                    let sql = pending.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !sql.isEmpty { output.append(Batch(sql: sql, startLine: startLine, repetitions: repeatCount)) }
+                    let sql = pending.joined()
+                    if !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { output.append(Batch(sql: sql, startLine: startLine, repetitions: repeatCount)) }
                     pending = []; startLine = lineNumber + 1
                     continue
                 }
             }
-            pending.append(line)
-            let chars = Array(line)
+            pending.append(line + terminator)
+            let chars = Array(line.unicodeScalars)
             var i = 0
             while i < chars.count {
                 let c = chars[i]
-                let next: Character? = i + 1 < chars.count ? chars[i + 1] : nil
+                let next: Unicode.Scalar? = i + 1 < chars.count ? chars[i + 1] : nil
                 switch state {
                 case .normal:
                     if c == "-", next == "-" { i = chars.count; continue }
@@ -61,8 +83,8 @@ public enum BatchParser {
                 i += 1
             }
         }
-        let sql = pending.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-        if !sql.isEmpty { output.append(Batch(sql: sql, startLine: startLine, repetitions: 1)) }
+        let sql = pending.joined()
+        if !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { output.append(Batch(sql: sql, startLine: startLine, repetitions: 1)) }
         // Let SQL Server diagnose unclosed quotes/comments, preserving its error.
         return output
     }

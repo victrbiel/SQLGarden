@@ -93,7 +93,7 @@ import StudioCore
                 Button { workspace.dockerSheet = true } label: { Label("Docker", systemImage: "shippingbox") }
             }
             ToolbarItem {
-                Button { if !workspace.connected { workspace.loadPassword() }; workspace.connectionSheet = true } label: {
+                Button { workspace.connectionSheet = true } label: {
                     Label(workspace.connected ? "Conexão" : "Conectar", systemImage: "network")
                 }.disabled(workspace.executing || workspace.connecting)
             }

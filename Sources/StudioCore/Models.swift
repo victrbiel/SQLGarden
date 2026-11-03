@@ -13,8 +13,11 @@ public struct ConnectionProfile: Codable, Equatable, Sendable {
     public init() {}
 
     public func connectionString(password: String) throws -> String {
+        guard ![host, username, database, password].contains(where: { $0.utf8.contains(0) }) else {
+            throw StudioError.message("Os campos de conexão não podem conter NUL (U+0000).")
+        }
         let host = host.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !host.isEmpty, !host.contains(";"), !host.contains(","), !host.contains("\n"),
+        guard !host.isEmpty, !host.contains(";"), !host.contains(","), !host.contains("\n"), !host.contains("\r"),
               (1...65535).contains(port), !username.isEmpty, !database.isEmpty else {
             throw StudioError.message("Confira servidor, porta, usuário e banco inicial.")
         }

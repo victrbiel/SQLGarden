@@ -35,9 +35,9 @@ static void addn(Buffer *b, const char *s, size_t n) {
 }
 static void add(Buffer *b, const char *s) { addn(b,s,strlen(s)); }
 static void number(Buffer *b, long long n) { char s[48]; snprintf(s,sizeof(s),"%lld",n); add(b,s); }
-static void quoted(Buffer *b, const char *s) {
+static void quotedn(Buffer *b, const char *s, size_t n) {
     add(b,"\"");
-    for (const unsigned char *p=(const unsigned char *)s; *p; ++p) {
+    for (const unsigned char *p=(const unsigned char *)s, *end=p+n; p<end; ++p) {
         char escaped[7];
         switch (*p) {
             case '"': add(b,"\\\""); break;
@@ -52,6 +52,7 @@ static void quoted(Buffer *b, const char *s) {
     }
     add(b,"\"");
 }
+static void quoted(Buffer *b, const char *s) { quotedn(b,s,strlen(s)); }
 static char *finish(Buffer *b) {
     if (b->failed) { free(b->p); return strdup("{\"success\":false,\"messages\":\"Memória insuficiente.\",\"sets\":[]}"); }
     return b->p ? b->p : strdup("");
@@ -174,14 +175,32 @@ static int cell(SGSession *s,Handle stmt,USmall col,Small type,Buffer *out,Buffe
     Buffer value={0}; int binary=type==-2 || type==-3 || type==-4;
     if(binary) add(&value,"0x");
     for(;;) {
-        unsigned char chunk[4096]={0}; Len indicator=0;
+        unsigned char chunk[4096]; Len indicator=0;
+        // A sentinel lets us locate the FINAL driver terminator even when data
+        // contains embedded zeroes or a UTF-8 chunk ends before BufferLength-1.
+        memset(chunk,0xff,sizeof(chunk));
         Small rc=s->api.get_data(stmt,col,binary ? C_BINARY : C_CHAR,chunk,sizeof(chunk),&indicator);
         if(indicator==NULL_DATA) { add(out,"null"); free(value.p); return 1; }
         if(rc==NO_DATA) break;
         if(!GOOD(rc)) { diagnostics(s,STMT,stmt,msg); free(value.p); return 0; }
         size_t n;
-        if(binary) n=rc==INFO ? sizeof(chunk) : (indicator<0 ? 0 : ((size_t)indicator<sizeof(chunk) ? (size_t)indicator : sizeof(chunk)));
-        else n=strnlen((char *)chunk,sizeof(chunk)-1);
+        if(binary) {
+            if(indicator>=0) n=(size_t)indicator<sizeof(chunk) ? (size_t)indicator : sizeof(chunk);
+            else if(rc==INFO) n=sizeof(chunk); /* SQL_NO_TOTAL on a full chunk */
+            else {
+                add(msg,"\nO driver não informou o comprimento do binário; o valor não foi exibido.");
+                free(value.p); return 0;
+            }
+        }
+        else {
+            size_t end=sizeof(chunk);
+            while(end && chunk[end-1]!=0) --end;
+            if(!end) {
+                add(msg,"\nO driver retornou texto sem terminador; o valor não foi exibido.");
+                free(value.p); return 0;
+            }
+            n=end-1;
+        }
         if(binary) {
             for(size_t i=0;i<n;i++) { char hex[3]; snprintf(hex,sizeof(hex),"%02X",chunk[i]); add(&value,hex); }
         } else addn(&value,(char *)chunk,n);
@@ -191,7 +210,7 @@ static int cell(SGSession *s,Handle stmt,USmall col,Small type,Buffer *out,Buffe
     }
     /* If a UTF-8 codepoint is cut by CELL_LIMIT, Swift decodes it with a
      * replacement character rather than failing the entire result. */
-    quoted(out,value.p ? value.p : "");
+    quotedn(out,value.p ? value.p : "",value.n);
     if(value.failed) out->failed=1;
     free(value.p); return 1;
 }
