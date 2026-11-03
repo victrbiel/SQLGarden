@@ -103,9 +103,19 @@ O ajuste é necessário porque ODBC 18.7.1.1 não carregou OpenSSL 4 neste Mac.
 `CopyTableView` implementa o seletor AppKit `copy:` para o menu de edição e ⌘C;
 o atalho é resolvido pelo responder chain antes de `keyDown`.
 
-A opção explícita de provisionamento local apenas conecta o primeiro perfil
-fixo à instância recém-instalada, recebendo sua senha por variável de ambiente.
-Ela é ignorada quando já há um perfil. O app cria seu próprio item no Chaves,
-evita problemas de autorização entre um utilitário externo e um bundle ad hoc
-e remove a variável do ambiente C após lê-la. Não é uma conexão automática
-nas aberturas seguintes, nem um instalador de Docker/SQL Server.
+
+## Distribuição 0.2.0
+
+App universal (arm64/x86_64), macOS mínimo 14.0. O bootstrap escolhe o prefixo
+OpenSSL 3 apropriado à arquitetura do slice. O catálogo Assets.car contém a logo
+Any/Dark. O Finder usa AppIcon.icns; um NSView observa a aparência efetiva e
+atualiza apenas o ícone do app/Dock, sem modificar o bundle instalado.
+
+O app não leva perfil nem provisionamento específico do computador de build.
+O script de dependências é independente do compilador Swift e o script Express
+é opcional, interativo e não contém operações de exclusão. As bibliotecas
+Microsoft/Homebrew são instaladas separadamente; não estão dentro do .app.
+
+O encerramento adia a resposta ao AppKit e apresenta uma sheet de confirmação
+para trabalho não salvo. O template inicial é marcado como conteúdo gerado,
+mas edições do usuário continuam marcadas como alterações.

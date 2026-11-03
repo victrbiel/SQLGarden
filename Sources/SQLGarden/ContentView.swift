@@ -97,18 +97,14 @@ import StudioCore
         .onChange(of: workspace.active.response.tables.first?.id) { _, _ in selectedResult = 0 }
     }
     private var connectionCard: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "leaf.fill").font(.title2).foregroundStyle(.mint)
-                .frame(width: 40, height: 40).background(.mint.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
-            VStack(alignment: .leading, spacing: 3) {
-                Text("SQLGarden").font(.headline)
-                HStack(spacing: 5) {
-                    Circle().fill(workspace.connected ? .green : .secondary).frame(width: 6, height: 6)
-                    Text(workspace.connected ? workspace.profile.name : "Desconectado").font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                }
+        VStack(alignment: .leading, spacing: 10) {
+            SQLGardenLogo().frame(maxWidth: 230).frame(height: 70)
+            HStack(spacing: 5) {
+                Circle().fill(workspace.connected ? .green : .secondary).frame(width: 6, height: 6)
+                Text(workspace.connected ? workspace.profile.name : "Desconectado")
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
-            Spacer()
-        }.padding(16)
+        }.frame(maxWidth: .infinity, alignment: .leading).padding(16)
     }
     private var queryTabs: some View {
         HStack(spacing: 0) {

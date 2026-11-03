@@ -11,7 +11,11 @@
 int main(int argc, char **argv) {
     (void)argc;
     const char *paths[] = {
-        "/opt/homebrew/opt/openssl@3/lib", "/usr/local/opt/openssl@3/lib", NULL
+#if defined(__arm64__) || defined(__aarch64__)
+        "/opt/homebrew/opt/openssl@3/lib", NULL
+#else
+        "/usr/local/opt/openssl@3/lib", NULL
+#endif
     };
     for (int i = 0; paths[i]; ++i) {
         char library[PATH_MAX];

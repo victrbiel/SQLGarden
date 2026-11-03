@@ -50,6 +50,8 @@ final class Workspace: ObservableObject {
 
     init() {
         profile = (UserDefaults.standard.data(forKey: "connection").flatMap { try? JSONDecoder().decode(ConnectionProfile.self, from: $0) }) ?? ConnectionProfile()
+        // The generated starter query is reproducible, not unsaved user work.
+        documents[0].savedText = documents[0].sql
         activeID = documents[0].id
         database = profile.database
     }
@@ -240,18 +242,7 @@ final class Workspace: ObservableObject {
         do { try SQLText.csv(table).write(to: url, atomically: true, encoding: .utf8) }
         catch { self.error = error.localizedDescription }
     }
-    func canQuit() -> Bool {
-        if executing {
-            let alert = NSAlert(); alert.messageText = "Há uma consulta em execução."
-            alert.informativeText = "Pare a consulta antes de encerrar o aplicativo."
-            alert.runModal(); return false
-        }
-        guard documents.contains(where: \.dirty) else { return true }
-        let alert = NSAlert(); alert.messageText = "Há consultas com alterações não salvas."
-        alert.informativeText = "Volte ao editor para salvá-las, ou encerre descartando as alterações."
-        alert.addButton(withTitle: "Voltar"); alert.addButton(withTitle: "Encerrar e descartar")
-        return alert.runModal() == .alertSecondButtonReturn
-    }
+
 }
 
 import UniformTypeIdentifiers

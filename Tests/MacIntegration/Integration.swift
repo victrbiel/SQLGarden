@@ -16,7 +16,7 @@ import StudioCore
             guard let password = ProcessInfo.processInfo.environment["SQLGARDEN_INTEGRATION_PASSWORD"], !password.isEmpty else {
                 throw StudioError.message("Defina SQLGARDEN_INTEGRATION_PASSWORD somente no ambiente do teste.")
             }
-            let database = ProcessInfo.processInfo.environment["SQLGARDEN_TEST_DATABASE"] ?? "SQLGarden_Validacao_20261019"
+            let database = ProcessInfo.processInfo.environment["SQLGARDEN_TEST_DATABASE"] ?? "SQLGarden_Validacao_" + ISO8601DateFormatter().string(from: Date()).filter { $0.isNumber }
             try require(database.hasPrefix("SQLGarden_Validacao_") && database.range(of: #"^[A-Za-z0-9_]+$"#, options: .regularExpression) != nil,
                         "O banco de teste precisa ter prefixo SQLGarden_Validacao_ e apenas letras, números e sublinhados.")
             var profile = ConnectionProfile()
@@ -34,7 +34,7 @@ import StudioCore
             }
             if CommandLine.arguments.contains("--disconnect-check") {
                 // Run only against the known, isolated validation database.
-                try require(database == "SQLGarden_Validacao_20261019_Final", "O cenário de desconexão usa somente a base criada por esta validação.")
+                try require(ProcessInfo.processInfo.environment["SQLGARDEN_TEST_DATABASE"] != nil, "Informe explicitamente a base SQLGarden_Validacao_ já criada pelo teste principal.")
                 let use = try await client.execute("USE \(SQLText.identifier(database));")
                 try require(use.success, use.messages)
                 let setup = try await client.execute("IF OBJECT_ID(N'dbo.SG_TransporteSemRetry') IS NOT NULL THROW 51001, N'Objeto de teste já existe; nada foi alterado.', 1; CREATE TABLE dbo.SG_TransporteSemRetry (Codigo INT IDENTITY PRIMARY KEY);")

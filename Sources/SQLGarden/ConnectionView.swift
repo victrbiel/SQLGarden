@@ -12,6 +12,16 @@ import SwiftUI
                     Text("Use o servidor e a porta que já funcionam nas suas aulas.").foregroundStyle(.secondary)
                 }
             }
+            if !RuntimeDependencies.missing.isEmpty {
+                VStack(alignment: .leading, spacing: 5) {
+                    Label("Prepare as dependências antes de conectar", systemImage: "exclamationmark.triangle")
+                    Text(RuntimeDependencies.missing.joined(separator: ", ")).font(.caption)
+                    Button("Instalar dependências…") {
+                        if let url = Bundle.main.url(forResource: "Instalar Dependencias", withExtension: "command") { NSWorkspace.shared.open(url) }
+                    }
+                }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+            }
             Form {
                 Section("Servidor") {
                     TextField("Nome da conexão", text: $workspace.profile.name)
