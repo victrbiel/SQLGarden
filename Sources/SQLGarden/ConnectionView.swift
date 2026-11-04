@@ -6,10 +6,10 @@ import SwiftUI
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack(spacing: 12) {
-                Image(systemName: "network").font(.title).foregroundStyle(.mint)
+                Image(systemName: "network").font(.title).foregroundStyle(Color.accentColor)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(workspace.connected ? "Conexão ativa" : "Conectar ao SQL Server").font(.title2.bold())
-                    Text("Use o servidor e a porta que já funcionam nas suas aulas.").foregroundStyle(.secondary)
+                    Text("Escolha o servidor, o banco inicial e suas credenciais.").foregroundStyle(.secondary)
                 }
             }
             if !RuntimeDependencies.missing.isEmpty {

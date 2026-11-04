@@ -59,6 +59,23 @@ private actor CredentialGate {
             let preserved = try Data(contentsOf: broken.appendingPathComponent("workspace-v1.json"))
             try check(preserved == original, "falha de recuperação preserva arquivos ilegíveis mesmo ao desativar histórico")
             let workspace = Workspace(storageDirectory: root, defaults: defaults)
+            let sample = try JSONDecoder().decode(SQLResponse.self, from: Data("""
+            {"success":true,"messages":"","sets":[{"columns":["A"],"rows":[["1"]],"affectedRows":-1,"truncated":false},{"columns":["B"],"rows":[["2"]],"affectedRows":-1,"truncated":false}]}
+            """.utf8))
+            var first = QueryDocument(title: "First", sql: "SELECT 1; SELECT 2;")
+            first.response = sample; first.resultSelection = 1
+            let second = QueryDocument(title: "Second", sql: "SELECT 3;")
+            try check(first.selectedResultIndex == 1 && second.selectedResultIndex == 0, "result selection belongs to each document")
+            first.response = SQLResponse()
+            try check(first.selectedResultIndex == 0, "new results safely clamp a stale selection")
+            first.resultSelection = -5
+            try check(first.selectedResultIndex == 0, "negative result selection is safely bounded")
+            let visual = Workspace(storageDirectory: root.appendingPathComponent("redesign"), defaults: defaults)
+            visual.documents[0].response = sample
+            for dark in [false, true] {
+                try await render(ContentView().environmentObject(visual).preferredColorScheme(dark ? .dark : .light), width: 1280, height: 820, name: dark ? "redesign-dark" : "redesign-light")
+            }
+            try await render(ContentView().environmentObject(visual), width: 920, height: 620, name: "redesign-compact")
             var unicodeEdit = QueryDocument(title: "normalização", sql: "SELECT N'e\u{301}';")
             unicodeEdit.savedText = "SELECT N'é';"
             try check(unicodeEdit.dirty, "edição com Unicode visualmente igual mas bytes diferentes exige salvamento")

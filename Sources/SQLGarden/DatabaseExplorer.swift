@@ -15,8 +15,18 @@ import StudioCore
             })) {
                 ForEach(workspace.databases, id: \.self) { Text($0).tag($0) }
             }.padding(12).disabled(workspace.executing || workspace.connecting)
-            Text("\(visible.count) objetos · clique para preparar uma consulta")
+            Text("\(visible.count) objetos · abre SQL sem executar")
                 .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 12)
+            HStack {
+                Text("OBJETOS").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                Spacer()
+                Button("Recolher") {
+                    collapsed = Set(groups.flatMap { group in
+                        Set(visible.filter { group.1.contains($0.kind) }.map(\.schema)).map { group.0 + "." + $0 }
+                    })
+                }.buttonStyle(.borderless).font(.caption)
+                Button("Expandir") { collapsed.removeAll() }.buttonStyle(.borderless).font(.caption)
+            }.padding(.horizontal, 12).padding(.vertical, 8)
             List {
                 ForEach(groups, id: \.0) { group in
                     let members = visible.filter { group.1.contains($0.kind) }

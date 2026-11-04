@@ -10,6 +10,8 @@ struct QueryDocument: Identifiable {
     var url: URL?
     var savedText: String?
     var response = SQLResponse()
+    var resultSelection = 0
+    var selectedResultIndex: Int { min(max(0, resultSelection), max(0, response.tables.count - 1)) }
     var elapsed: TimeInterval = 0
     var dirty: Bool { savedText.map { !sql.utf8.elementsEqual($0.utf8) } ?? !sql.isEmpty }
 }
