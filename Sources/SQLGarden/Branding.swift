@@ -1,8 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Original artwork supplied with SQLGarden. Bundle icon remains the light
-/// variant; only the running application's Dock icon follows its appearance.
+/// The Dock uses the bundled appearance variant of the approved garden sprite.
 @MainActor final class BrandIconView: NSView {
     override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); updateIcon() }
     override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); updateIcon() }
@@ -20,9 +19,10 @@ struct BrandAppearanceObserver: NSViewRepresentable {
 struct SQLGardenLogo: View {
     var body: some View {
         Image("SQLGardenLogo")
-            .renderingMode(.original)
+            .renderingMode(.template)
             .resizable()
             .scaledToFit()
+            .foregroundStyle(.primary)
             .accessibilityLabel("SQLGarden — desenvolvido por Victor")
     }
 }

@@ -37,6 +37,7 @@ import StudioCore
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
     @StateObject private var workspace = Workspace()
     @State private var showingAbout = false
+    @AppStorage("workspace.showResults") private var showResults = true
     @AppStorage("appearance") private var appearance = "system"
     private var colorScheme: ColorScheme? {
         appearance == "dark" ? .dark : appearance == "light" ? .light : nil
@@ -61,6 +62,9 @@ import StudioCore
                 Button("Sobre o SQLGarden") { showingAbout = true }
             }
             CommandGroup(after: .toolbar) {
+                Toggle("Mostrar resultados", isOn: $showResults).keyboardShortcut("r", modifiers: [.command, .shift])
+                Button("Gerenciar containers…") { workspace.dockerSheet = true }
+
                 Picker("Aparência", selection: $appearance) {
                     Text("Sistema").tag("system")
                     Text("Claro").tag("light")
@@ -107,7 +111,7 @@ import StudioCore
                 Button("Histórico de consultas…") { workspace.historySheet = true }.keyboardShortcut("h", modifiers: [.command, .shift])
                 Button("Verificar estado da sessão") { Task { await workspace.inspectSession() } }.disabled(!workspace.connected || workspace.executing)
                 Button("Atualizar explorador") { Task { await workspace.refreshExplorer() } }.disabled(!workspace.connected)
-                Button("Conectar…") { workspace.connectionSheet = true }.disabled(workspace.connected || workspace.connecting || workspace.executing)
+                Button(workspace.connected ? "Gerenciar conexão…" : "Conectar…") { workspace.connectionSheet = true }.disabled(workspace.connecting || workspace.executing)
             }
         }
     }

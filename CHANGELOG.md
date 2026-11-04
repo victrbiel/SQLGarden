@@ -1,4 +1,20 @@
-# Histórico
+# Changelog
+
+## 0.5.0 — Preview
+
+### Changed
+- Refined the native workspace hierarchy, connection header, active-tab indication, and execution-scope label.
+- Added a results focus toggle in the toolbar and View menu (Shift-Command-R).
+- Added visible result selectors with row counts and preserved result selection per query document.
+- Added explorer expand/collapse actions and contextual empty states.
+- Integrated the garden-sprite app icon and adaptive monochrome wordmark.
+- Retained the existing SwiftUI/AppKit architecture, SQL execution engine, shared session, and recovery format.
+
+### Validation
+- Universal arm64/x86_64 build and ad hoc signature verified.
+- 23 core tests, 15 C bridge tests, and 23 offline UI/model checks passed.
+- Native UI interactions checked in an isolated preview app; rendering inspected at standard/minimum width and in light/dark appearance.
+- Live SQL Server regressions, physical Intel, macOS 14, and notarization remain unverified for this build.
 
 ## 0.4.0 — 28/10/2026
 

@@ -20,7 +20,7 @@ import StudioCore
             }
             service = composer; composer.delegate = self
             composer.recipients = [SupportReport.recipient]
-            composer.subject = "SQLGarden \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.4.0") — \(kind)"
+            composer.subject = "SQLGarden \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.5.0") — \(kind)"
             status = "Composição solicitada ao macOS. Confira o destinatário, o texto e o anexo no aplicativo de e-mail e envie por lá. O SQLGarden não confirma a entrega."
             composer.perform(withItems: items)
             // The mail app may read the attachment after the composer opens.
@@ -54,7 +54,7 @@ import StudioCore
         let architecture = "x86_64"
         #endif
         return SupportReport.diagnostic(
-            version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.4.0",
+            version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.5.0",
             system: ProcessInfo.processInfo.operatingSystemVersionString, architecture: architecture,
             missing: RuntimeDependencies.missing, events: workspace.diagnosticEvents)
     }

@@ -7,6 +7,19 @@ T-SQL editor, object explorer, `GO` batch support, a persistent SQL session,
 multiple result sets, messages, CSV export, and optional credential storage in
 macOS Keychain. No embedded Python runtime.
 
+## 0.5.0 preview — Native workspace redesign
+
+- Integrated the three-petal mascot, native application icon, and adaptive wordmark.
+- Clearer connection identity, selected query tabs, and selection/document execution scope.
+- Results can be hidden from the toolbar or View menu (Shift-Command-R); running SQL reveals them.
+- Result selection belongs to each document and remains valid after results change.
+- Visible multiple-result selectors with row counts; explorer expand/collapse controls.
+- Native resizable panes, semantic colors, and more informative disconnected/running states.
+
+See the [design research and plan](docs/design/0.5.0-workspace.md) and
+[validation notes](docs/VALIDATION_0.5.0.md). This is a preview: real SQL Server
+regressions have not been rerun for this build. Earlier release tags remain unchanged.
+
 ## What's new in 0.4.0
 
 - Quote and accent input preserves keyboard composition.
